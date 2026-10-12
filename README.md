@@ -1,4 +1,10 @@
 # Medicare - Hệ Thống Quản Lý Lịch Khám Và Dịch Vụ Chuỗi Phòng Khám Đa Khoa
+
+> Bộ khung 7 microservice và cách chạy bằng Docker Compose: [docs/microservices-base.md](docs/microservices-base.md). Backend và frontend hiện tại vẫn là phiên bản cũ trong giai đoạn chuyển đổi.
+
+Identity service đã có API đăng nhập độc lập: [hướng dẫn và OpenAPI](docs/identity-service.md). Đăng ký bệnh nhân tạo hồ sơ tối thiểu tại Registry và liên kết bằng `subject_id`: [luồng Identity–Registry](docs/registry-service.md).
+Tài khoản bệnh nhân mới đăng ký và đăng nhập qua Identity ngay tại `http://localhost:5173/` khi chạy Vite trong `Frontend/`. Các màn hình nghiệp vụ cũ chưa được nối với tài khoản mới.
+
 **Đại học Công nghệ - Đại học Quốc gia Hà Nội**
 ## 📌 Giới Thiệu
 

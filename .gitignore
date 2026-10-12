@@ -11,6 +11,7 @@ env/
 .env.*
 !.env.example
 !Backend/.env.example
+services/identity/legacy-import.env
 
 # Backend local runtime
 Backend/venv/
@@ -19,6 +20,7 @@ Backend/output_schedule.txt
 
 # Frontend
 Frontend/node_modules/
+Frontend/.npm-cache/
 Frontend/.vite/
 Frontend/dist/
 Frontend/dist-ssr/

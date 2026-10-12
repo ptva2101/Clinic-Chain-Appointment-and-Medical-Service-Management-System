@@ -1,0 +1,135 @@
+x-api-base: &api-base
+  build:
+    context: ./services
+    dockerfile: Dockerfile
+    target: runtime
+  restart: unless-stopped
+  depends_on:
+    mysql:
+      condition: service_healthy
+  healthcheck:
+    test:
+      - CMD
+      - python
+      - -c
+      - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"
+    interval: 15s
+    timeout: 5s
+    retries: 3
+    start_period: 20s
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-clinic_dev_root}
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./infra/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  identity:
+    <<: *api-base
+    depends_on:
+      mysql:
+        condition: service_healthy
+      registry:
+        condition: service_healthy
+    command: ["sh", "-c", "python -m identity.migrate && exec uvicorn identity.main:app --host 0.0.0.0 --port 8000"]
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: identity_db
+      DB_USER: identity_app
+      DB_PASSWORD: dev_only_identity
+      IDENTITY_ADMIN_USERNAME: ${IDENTITY_ADMIN_USERNAME:-admin}
+      IDENTITY_ADMIN_PASSWORD: ${IDENTITY_ADMIN_PASSWORD:-DevAdminChangeMe123!}
+      IDENTITY_JWT_SECRET: ${IDENTITY_JWT_SECRET:-replace_this_local_development_signing_secret_before_deployment}
+      IDENTITY_CORS_ORIGINS: ${IDENTITY_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      REGISTRY_INTERNAL_URL: http://registry:8000
+      REGISTRY_INTERNAL_TOKEN: ${REGISTRY_INTERNAL_TOKEN:-replace_this_internal_service_token_before_deployment}
+    ports:
+      - "127.0.0.1:8001:8000"
+
+  registry:
+    <<: *api-base
+    command: ["sh", "-c", "python -m registry.migrate && exec uvicorn registry.main:app --host 0.0.0.0 --port 8000"]
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: registry_db
+      DB_USER: registry_app
+      DB_PASSWORD: dev_only_registry
+      REGISTRY_INTERNAL_TOKEN: ${REGISTRY_INTERNAL_TOKEN:-replace_this_internal_service_token_before_deployment}
+    ports:
+      - "127.0.0.1:8002:8000"
+
+  scheduling:
+    <<: *api-base
+    command: ["uvicorn", "scheduling.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: scheduling_db
+      DB_USER: scheduling_app
+      DB_PASSWORD: dev_only_scheduling
+    ports:
+      - "127.0.0.1:8003:8000"
+
+  appointment:
+    <<: *api-base
+    command: ["uvicorn", "appointment.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: appointment_db
+      DB_USER: appointment_app
+      DB_PASSWORD: dev_only_appointment
+    ports:
+      - "127.0.0.1:8004:8000"
+
+  billing:
+    <<: *api-base
+    command: ["uvicorn", "billing.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: billing_db
+      DB_USER: billing_app
+      DB_PASSWORD: dev_only_billing
+    ports:
+      - "127.0.0.1:8005:8000"
+
+  clinical:
+    <<: *api-base
+    command: ["uvicorn", "clinical.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: clinical_db
+      DB_USER: clinical_app
+      DB_PASSWORD: dev_only_clinical
+    ports:
+      - "127.0.0.1:8006:8000"
+
+  laboratory:
+    <<: *api-base
+    command: ["uvicorn", "laboratory.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: laboratory_db
+      DB_USER: laboratory_app
+      DB_PASSWORD: dev_only_laboratory
+    ports:
+      - "127.0.0.1:8007:8000"
+
+volumes:
+  mysql_data:

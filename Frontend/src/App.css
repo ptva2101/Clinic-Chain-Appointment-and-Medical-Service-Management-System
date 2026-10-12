@@ -234,6 +234,27 @@
   text-align: center;
 }
 
+.auth-identity-summary {
+  display: grid;
+  gap: 14px;
+  color: #42517c;
+  line-height: 1.5;
+}
+
+.auth-identity-summary h1,
+.auth-identity-summary p {
+  margin: 0;
+}
+
+.auth-identity-summary h1 {
+  color: #1f2a56;
+  font-size: 1.65rem;
+}
+
+.auth-identity-summary strong {
+  overflow-wrap: anywhere;
+}
+
 .brand-header {
   display: flex;
   align-items: center;
