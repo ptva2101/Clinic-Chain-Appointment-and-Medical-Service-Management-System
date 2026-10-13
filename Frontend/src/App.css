@@ -255,6 +255,19 @@
   overflow-wrap: anywhere;
 }
 
+.patient-registry-profile {
+  display: grid;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid #d8e1ff;
+}
+
+.patient-registry-profile h2 {
+  margin: 0;
+  color: #1f2a56;
+  font-size: 1.2rem;
+}
+
 .brand-header {
   display: flex;
   align-items: center;
@@ -495,10 +508,14 @@
 }
 
 .admin-sidebar {
-  min-height: 100vh;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
   padding: 24px 18px;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
   background: #0f172a;
   color: #e5edf8;
 }
@@ -700,6 +717,23 @@
   color: #334155;
   font-size: 0.9rem;
   font-weight: 800;
+}
+
+.admin-patient-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.admin-staff-directory {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #dbe5f0;
 }
 
 .admin-filter-row {
@@ -4217,7 +4251,10 @@
   }
 
   .admin-sidebar {
+    position: static;
+    height: auto;
     min-height: auto;
+    overflow: visible;
   }
 
   .patient-sidebar {

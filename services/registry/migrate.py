@@ -14,7 +14,9 @@ async def migrate() -> None:
         async with pool.acquire() as connection:
             try:
                 async with connection.cursor() as cursor:
-                    await cursor.execute(schema)
+                    for statement in schema.split(";"):
+                        if statement.strip():
+                            await cursor.execute(statement)
                 await connection.commit()
             except Exception:
                 await connection.rollback()

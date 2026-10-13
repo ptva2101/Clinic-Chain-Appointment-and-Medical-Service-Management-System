@@ -98,45 +98,6 @@ export default function PatientDashboard({
     { MaBacSi: 'BS022', HoTen: 'Đoàn Nguyên Đức', ChuyenKhoa: 'Răng hàm mặt', SDT: '0927890123' },
     { MaBacSi: 'BS023', HoTen: 'Lưu Hồng Quang', ChuyenKhoa: 'Tai mũi họng', SDT: '0938901234' },
   ])
-  const generateMockSchedules = () => {
-    const cauGiayDoctors = staffList.slice(0, 12)
-    const haiBaTrungDoctors = staffList.slice(12)
-    const generatedSchedules = []
-    let runningIndex = 1
-
-    for (let time = Date.UTC(2026, 5, 1), dayIndex = 0; time <= Date.UTC(2026, 6, 1); time += 86400000, dayIndex += 1) {
-      const ngayTruc = new Date(time).toISOString().slice(0, 10)
-
-      for (let ca = 1; ca <= 4; ca += 1) {
-        const doctor = cauGiayDoctors[(dayIndex * 4 + ca - 1) % cauGiayDoctors.length]
-        generatedSchedules.push({
-          MaLichTruc: `LT_${String(runningIndex).padStart(3, '0')}`,
-          MaBacSi: doctor.MaBacSi,
-          MaChiNhanh: 'CN_CG',
-          NgayTruc: ngayTruc,
-          CaTruc: ca,
-          TrangThai: 'Đang hoạt động',
-        })
-        runningIndex += 1
-      }
-
-      for (let ca = 1; ca <= 4; ca += 1) {
-        const doctor = haiBaTrungDoctors[(dayIndex * 4 + ca - 1) % haiBaTrungDoctors.length]
-        generatedSchedules.push({
-          MaLichTruc: `LT_${String(runningIndex).padStart(3, '0')}`,
-          MaBacSi: doctor.MaBacSi,
-          MaChiNhanh: 'CN_HBT',
-          NgayTruc: ngayTruc,
-          CaTruc: ca,
-          TrangThai: 'Đang hoạt động',
-        })
-        runningIndex += 1
-      }
-    }
-
-    return generatedSchedules
-  }
-  const [doctorSchedules] = useState(generateMockSchedules())
 	  const initialPatientProfile = {
 	    MaBenhAn: user?.MaBenhAn || 'BN001',
 	    HoTen: user?.HoTen || user?.name || 'Trần Quang Hải',
@@ -449,8 +410,8 @@ export default function PatientDashboard({
     { KyTuDauBHYT: 'DN', DoiTuongChinhSach: 'Người lao động doanh nghiệp', TyLeHuong: 0.8 },
   ]
 
-  const effectiveBranches = catalogData?.branches?.length ? catalogData.branches : branches
-  const effectiveServices = catalogData?.services?.length ? catalogData.services : services
+  const effectiveBranches = catalogData?.branches || []
+  const effectiveServices = catalogData?.services || []
   const effectiveDiseases = catalogData?.diseases?.length ? catalogData.diseases : diseases
   const effectiveMedicines = catalogData?.medicines?.length ? catalogData.medicines : medicines
   const effectiveBhytCategories = catalogData?.bhyt?.length ? catalogData.bhyt : bhytCategories
@@ -458,62 +419,40 @@ export default function PatientDashboard({
     ...schedule,
     TrangThai: schedule.TrangThai || 'Đang hoạt động',
   }))
-  const effectiveDoctorSchedules = normalizedCatalogSchedules.length ? normalizedCatalogSchedules : doctorSchedules
-  const allKnownServices = effectiveServices.concat(
-    services.filter((mockService) => !effectiveServices.some((service) => service.MaDichVu === mockService.MaDichVu)),
-  )
-  const allKnownBranches = effectiveBranches.concat(
-    branches.filter((mockBranch) => !effectiveBranches.some((branch) => branch.MaChiNhanh === mockBranch.MaChiNhanh)),
-  )
+  const effectiveDoctorSchedules = normalizedCatalogSchedules
+  const allKnownServices = effectiveServices
+  const allKnownBranches = effectiveBranches
   const derivedDoctors = Object.values(
     effectiveDoctorSchedules.reduce((doctorMap, schedule) => {
       if (!schedule.MaBacSi || doctorMap[schedule.MaBacSi]) return doctorMap
-      const mockDoctor = staffList.find((doctor) => doctor.MaBacSi === schedule.MaBacSi)
-
       doctorMap[schedule.MaBacSi] = {
         MaBacSi: schedule.MaBacSi,
         HoTen: schedule.TenBacSi || schedule.HoTen || schedule.MaBacSi,
-        ChuyenKhoa: schedule.ChuyenKhoa || mockDoctor?.ChuyenKhoa || '',
-        SDT: schedule.SDT || mockDoctor?.SDT || '',
+        ChuyenKhoa: schedule.ChuyenKhoa || '',
+        SDT: schedule.SDT || '',
       }
       return doctorMap
     }, {}),
   )
-  const effectiveStaffList = derivedDoctors.length
-    ? derivedDoctors.concat(
-        staffList.filter((mockDoctor) => !derivedDoctors.some((doctor) => doctor.MaBacSi === mockDoctor.MaBacSi)),
-      )
-    : staffList
-  const effectiveBranchServices = catalogData?.branchServices?.length
-    ? catalogData.branchServices.map((config) => ({
+  const effectiveStaffList = derivedDoctors
+  const effectiveBranchServices = (catalogData?.branchServices || []).map((config) => {
+    const branch = effectiveBranches.find((item) => item.MaChiNhanh === config.MaChiNhanh)
+    const service = effectiveServices.find((item) => item.MaDichVu === config.MaDichVu)
+    return {
         MaCauHinh: config.MaCauHinh,
         MaChiNhanh: config.MaChiNhanh,
         MaDichVu: config.MaDichVu,
-        SlotGioiHan: Number(config.SlotGioiHan || 15),
-        TenChiNhanh: config.TenChiNhanh || '',
-        TenDichVu: config.TenDichVu || '',
-        ChuyenKhoa: config.ChuyenKhoa || '',
-        LoaiDichVu: config.LoaiDichVu || '',
-        GiaGoc: Number(config.GiaGoc || 0),
-      }))
-    : branchServices
-  const allKnownBranchServices = effectiveBranchServices.concat(
-    branchServices.filter(
-      (mockConfig) => !effectiveBranchServices.some((config) => config.MaCauHinh === mockConfig.MaCauHinh),
-    ),
-  )
-  const allKnownDoctorSchedules = effectiveDoctorSchedules.concat(
-    doctorSchedules.filter(
-      (mockSchedule) =>
-        !effectiveDoctorSchedules.some(
-          (schedule) =>
-            schedule.MaBacSi === mockSchedule.MaBacSi &&
-            schedule.MaChiNhanh === mockSchedule.MaChiNhanh &&
-            schedule.NgayTruc === mockSchedule.NgayTruc &&
-            Number(schedule.CaTruc) === Number(mockSchedule.CaTruc),
-        ),
-    ),
-  )
+        SlotGioiHan: Number(config.SlotGioiHan ?? 0),
+        TrangThai: config.TrangThai,
+        TenChiNhanh: branch?.TenChiNhanh || '',
+        TenDichVu: service?.TenDichVu || '',
+        ChuyenKhoa: service?.ChuyenKhoa || '',
+        LoaiDichVu: service?.LoaiDichVu || '',
+        GiaGoc: Number(service?.GiaGoc ?? 0),
+    }
+  })
+  const allKnownBranchServices = effectiveBranchServices
+  const allKnownDoctorSchedules = effectiveDoctorSchedules
 
   const normalizeAppointmentRow = (appointment) => ({
     MaLichHen: appointment.MaLichHen,

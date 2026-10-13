@@ -3,7 +3,7 @@ import { LogOut } from 'lucide-react'
 import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
 import { acceptTest, getTests, updateResult } from '../api/laboratory.js'
 
-export default function TechnicianDashboard({ user, onLogout, showNotification, onUpdateUser, catalogData = EMPTY_CATALOG_DATA }) {
+export default function TechnicianDashboard({ user, onLogout, onChangePassword, showNotification, catalogData = EMPTY_CATALOG_DATA }) {
   const [activeTab, setActiveTab] = useState('pending')
   const [paymentModal, setPaymentModal] = useState(null)
   const [resultModal, setResultModal] = useState(null)
@@ -239,23 +239,20 @@ export default function TechnicianDashboard({ user, onLogout, showNotification, 
     { KyTuDauBHYT: 'HT', DoiTuongChinhSach: 'Cán bộ Hưu trí', TyLeHuong: 0.95 },
     { KyTuDauBHYT: 'DN', DoiTuongChinhSach: 'Người lao động doanh nghiệp', TyLeHuong: 0.8 },
   ]
-  const [technicianProfile, setTechnicianProfile] = useState({
+  const [technicianProfile] = useState({
     MaXNV: user?.MaXNV || user?.id || 'XNV001',
     HoTen: user?.HoTen || user?.name || user?.id || 'Xét nghiệm viên',
     MaChiNhanh: user?.MaChiNhanh || 'CN_CG',
-    MatKhau: user?.MatKhau || '123456',
   })
 
-	  const effectiveBranches = catalogData?.branches?.length ? catalogData.branches : branches
-	  const effectiveServices = catalogData?.services?.length ? catalogData.services : services
+  const effectiveBranches = catalogData?.branches || []
+  const effectiveServices = catalogData?.services || []
 	  const effectiveBhytCategories = catalogData?.bhyt?.length ? catalogData.bhyt : bhytCategories
-  const allKnownServices = effectiveServices.concat(
-    services.filter((mockService) => !effectiveServices.some((service) => service.MaDichVu === mockService.MaDichVu)),
-  )
+  const allKnownServices = effectiveServices
 
   const maChiNhanh = effectiveBranches.some((branch) => branch.MaChiNhanh === technicianProfile.MaChiNhanh)
     ? technicianProfile.MaChiNhanh
-    : effectiveBranches[0]?.MaChiNhanh || 'CN_CG'
+    : effectiveBranches[0]?.MaChiNhanh || ''
   const currentBranch = effectiveBranches.find((branch) => branch.MaChiNhanh === maChiNhanh) || effectiveBranches[0]
   const normalizeLabApiRow = (row) => {
     const giaGoc = Number(row.GiaGoc || 0)
@@ -556,16 +553,10 @@ export default function TechnicianDashboard({ user, onLogout, showNotification, 
     setShowPasswordForm(false)
   }
 
-  const handleChangePassword = (event) => {
+  const handleChangePassword = async (event) => {
     event.preventDefault()
-
-    if (passwordForm.currentPassword !== technicianProfile.MatKhau) {
-      notify('Mật khẩu hiện tại không chính xác.', 'error')
-      return
-    }
-
-    if (!passwordForm.newPassword.trim()) {
-      notify('Vui lòng nhập mật khẩu mới.', 'error')
+    if (passwordForm.newPassword.length < 12) {
+      notify('Mật khẩu mới phải có ít nhất 12 ký tự.', 'error')
       return
     }
 
@@ -574,15 +565,12 @@ export default function TechnicianDashboard({ user, onLogout, showNotification, 
       return
     }
 
-    const nextProfile = {
-      ...technicianProfile,
-      MatKhau: passwordForm.newPassword,
+    try {
+      await onChangePassword(passwordForm.currentPassword, passwordForm.newPassword)
+      handleCancelPasswordChange()
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không đổi được mật khẩu.', 'error')
     }
-
-    setTechnicianProfile(nextProfile)
-    onUpdateUser?.({ MatKhau: passwordForm.newPassword })
-    handleCancelPasswordChange()
-    notify('Đổi mật khẩu thành công!')
   }
 
   return (

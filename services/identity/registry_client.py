@@ -39,3 +39,31 @@ class RegistryClient:
             return str(profile["id"])
         except (ValueError, KeyError, TypeError) as exc:
             raise RegistryUnavailable("Registry service returned an invalid profile") from exc
+
+    async def ensure_staff(self, account_id: str, details: dict) -> str:
+        token = os.getenv("REGISTRY_INTERNAL_TOKEN", "")
+        if not token:
+            raise RegistryUnavailable("Registry service credential is not configured")
+        base_url = os.getenv("REGISTRY_INTERNAL_URL", "http://registry:8000").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.put(
+                    f"{base_url}/api/v1/registry/internal/staff/{account_id}",
+                    headers={"X-Service-Token": token},
+                    json=details,
+                )
+        except httpx.RequestError as exc:
+            raise RegistryUnavailable("Registry service is unavailable") from exc
+        if response.status_code == 409:
+            raise RegistryConflict("Staff code is linked to another account")
+        if response.status_code != 200:
+            raise RegistryUnavailable("Registry service could not create the staff profile")
+        try:
+            profile = response.json()
+            if (profile["identity_account_id"] != account_id
+                    or profile["staff_code"] != details["staff_code"]
+                    or profile["role"] != details["role"]):
+                raise ValueError("Mismatched Registry profile")
+            return str(profile["staff_code"])
+        except (ValueError, KeyError, TypeError) as exc:
+            raise RegistryUnavailable("Registry service returned an invalid staff profile") from exc

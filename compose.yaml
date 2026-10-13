@@ -68,18 +68,23 @@ services:
       DB_USER: registry_app
       DB_PASSWORD: dev_only_registry
       REGISTRY_INTERNAL_TOKEN: ${REGISTRY_INTERNAL_TOKEN:-replace_this_internal_service_token_before_deployment}
+      IDENTITY_INTERNAL_URL: http://identity:8000
+      REGISTRY_CORS_ORIGINS: ${REGISTRY_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     ports:
       - "127.0.0.1:8002:8000"
 
   scheduling:
     <<: *api-base
-    command: ["uvicorn", "scheduling.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["sh", "-c", "python -m scheduling.migrate && exec uvicorn scheduling.main:app --host 0.0.0.0 --port 8000"]
     environment:
       DB_HOST: mysql
       DB_PORT: "3306"
       DB_NAME: scheduling_db
       DB_USER: scheduling_app
       DB_PASSWORD: dev_only_scheduling
+      IDENTITY_INTERNAL_URL: http://identity:8000
+      REGISTRY_INTERNAL_URL: http://registry:8000
+      SCHEDULING_CORS_ORIGINS: ${SCHEDULING_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     ports:
       - "127.0.0.1:8003:8000"
 

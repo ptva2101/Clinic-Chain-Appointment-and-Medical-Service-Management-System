@@ -2,31 +2,28 @@ import { useEffect, useMemo, useState } from 'react'
 import { Activity, Building2, Calendar, ClipboardList, DollarSign, LogOut, Stethoscope, Users } from 'lucide-react'
 import medicalLogoImage from '../assets/medical-logo-cutout.png'
 import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
+import { getFutureDateKey, getTodayDateKey } from '../shared/dates.js'
 import { getMonthlyReport } from '../api/billing.js'
+import { listAccounts } from '../api/identity.js'
+import { listPatients } from '../api/patientProfile.js'
+import { createBranch, createService as createRegistryService, saveBranchService, updateBranchService, updateServicePrice as saveServicePrice } from '../api/registry.js'
+import { listStaffProfiles } from '../api/staffProfile.js'
 import { cancelDoctorSchedules, createDoctorSchedules, listDoctorSchedules, transferDoctorSchedules } from '../api/scheduling.js'
+import IdentityStaffAccounts from './IdentityStaffAccounts.jsx'
+
+const PATIENT_PAGE_SIZE = 20
+const STAFF_ROLE_NAMES = { doctor: 'Bác sĩ', letan: 'Lễ tân', xnv: 'Xét nghiệm viên' }
 
 export default function AdminDashboard({
   user,
   onLogout,
+  identityAccessToken,
   showNotification,
   addPatientNotifications,
   addScheduleAdjustment,
   catalogData = EMPTY_CATALOG_DATA,
 }) {
-  const [branches, setBranches] = useState([
-    {
-      MaChiNhanh: 'CN_CG',
-      TenChiNhanh: 'Medicare - Cơ sở Cầu Giấy',
-      DiaChi: 'Số 1 Dịch Vọng Hậu, Cầu Giấy, Hà Nội',
-      SDT: '0241234567',
-    },
-    {
-      MaChiNhanh: 'CN_HBT',
-      TenChiNhanh: 'Medicare - Cơ sở Hai Bà Trưng',
-      DiaChi: 'Số 99 Đại Cồ Việt, Hai Bà Trưng, Hà Nội',
-      SDT: '0247654321',
-    },
-  ])
+  const [branches, setBranches] = useState([])
   const [branchForm, setBranchForm] = useState({
     MaChiNhanh: '',
     TenChiNhanh: '',
@@ -34,315 +31,19 @@ export default function AdminDashboard({
     SDT: '',
   })
 
-  const [services, setServices] = useState([
-    { MaDichVu: 'DV_KHAM_NOI', TenDichVu: 'Khám Nội Tổng Quát', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 150000 },
-    { MaDichVu: 'DV_KHAM_GIA_DINH', TenDichVu: 'Khám Sức Khỏe Gia Đình', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 250000 },
-    { MaDichVu: 'DV_KHAM_LAO_KHOA', TenDichVu: 'Khám Tư Vấn Sức Khỏe Lão Khoa', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 180000 },
-    { MaDichVu: 'DV_KHAM_TIM_MACH', TenDichVu: 'Khám Sàng Lọc Tim Mạch - Huyết Áp', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 200000 },
-    { MaDichVu: 'DV_KHAM_TIEU_HOA', TenDichVu: 'Khám Tiêu Hóa - Gan Mật', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 180000 },
-    { MaDichVu: 'DV_KHAM_HO_HAP', TenDichVu: 'Khám Bệnh Lý Đường Hô Hấp', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 170000 },
-    { MaDichVu: 'DV_KHAM_NOI_TIET', TenDichVu: 'Khám Sàng Lọc Tiểu Đường & Nội Tiết', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 220000 },
-    { MaDichVu: 'DV_KHAM_DINH_DUONG', TenDichVu: 'Khám Tư Vấn Dinh Dưỡng Chuyên Sâu', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 150000 },
-    { MaDichVu: 'DT_TRUYEN_DICH', TenDichVu: 'Liệu trình truyền dịch giải độc, bù nước', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Điều trị', GiaGoc: 250000 },
-    { MaDichVu: 'DT_TIEM_KHANG_SINH', TenDichVu: 'Dịch vụ tiêm thuốc/kháng sinh theo chỉ định', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Điều trị', GiaGoc: 80000 },
-    { MaDichVu: 'DV_KHAM_RANG', TenDichVu: 'Khám Răng Hàm Mặt Định Kỳ', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 200000 },
-    { MaDichVu: 'DV_LAY_CAO', TenDichVu: 'Lấy Cao Răng Và Đánh Bóng Thẩm Mỹ', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 150000 },
-    { MaDichVu: 'DV_KHAM_NIENG_RANG', TenDichVu: 'Khám Tư Vấn Chỉnh Nha/Niềng Răng', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 300000 },
-    { MaDichVu: 'DV_KHAM_IMPLANT', TenDichVu: 'Khám Tư Vấn Trồng Răng Implant', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 300000 },
-    { MaDichVu: 'DT_HAN_RANG', TenDichVu: 'Hàn Răng Composite Thẩm Mỹ (1 Răng)', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Điều trị', GiaGoc: 300000 },
-    { MaDichVu: 'DT_RANG_TUY', TenDichVu: 'Liệu Trình Điều Trị Tủy Răng Toàn Diện', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Điều trị', GiaGoc: 1200000 },
-    { MaDichVu: 'DT_NHO_RANG_KHON', TenDichVu: 'Phẫu Thuật Nhổ Răng Khôn Mọc Lệch', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Điều trị', GiaGoc: 1000000 },
-    { MaDichVu: 'DT_TAY_TRANG', TenDichVu: 'Tẩy Trắng Răng Công Nghệ Laser', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Điều trị', GiaGoc: 2000000 },
-    { MaDichVu: 'DV_KHAM_TMH', TenDichVu: 'Khám Tai Mũi Họng Thông Thường', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 180000 },
-    { MaDichVu: 'DV_NOI_SOI_TMH', TenDichVu: 'Nội Soi Tai Mũi Họng Ống Mềm', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 250000 },
-    { MaDichVu: 'DV_KHAM_THINH_LUC', TenDichVu: 'Khám Đo Thính Lực Đơn Âm', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 200000 },
-    { MaDichVu: 'DT_KHIDUNG', TenDichVu: 'Liệu Trình Khí Dung Mũi Họng', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Điều trị', GiaGoc: 450000 },
-    { MaDichVu: 'DT_VIEM_AMIDAN', TenDichVu: 'Liệu Trình Điều Trị Viêm Amidan Hạt', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Điều trị', GiaGoc: 600000 },
-    { MaDichVu: 'DT_RUA_XOANG', TenDichVu: 'Hút Mủ Và Chọc Rửa Xoang Điều Trị', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Điều trị', GiaGoc: 350000 },
-    { MaDichVu: 'DT_LAY_DI_VAT', TenDichVu: 'Thủ Thuật Lấy Dị Vật Vùng Tai/Mũi/Họng', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Điều trị', GiaGoc: 400000 },
-    { MaDichVu: 'XN_MAU', TenDichVu: 'Xét Nghiệm Công Thức Máu 24 Chỉ Số', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 250000 },
-    { MaDichVu: 'SA_O_BUNG', TenDichVu: 'Siêu Âm Ổ Bụng Tổng Quát', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 300000 },
-    { MaDichVu: 'XN_NUOC_TIEU', TenDichVu: 'Xét Nghiệm Nước Tiểu Toàn Bộ (10 Thông Số)', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 120000 },
-    { MaDichVu: 'XN_SINH_HOA', TenDichVu: 'Xét Nghiệm Sinh Hóa Máu (Gan, Thận, Mỡ Máu)', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 350000 },
-    { MaDichVu: 'XN_DUONG_HUYET', TenDichVu: 'Xét Nghiệm Đường Huyết Nhanh', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 80000 },
-  ])
-  const [priceDrafts, setPriceDrafts] = useState(() => ({
-    DV_KHAM_NOI: '150000',
-    DV_KHAM_GIA_DINH: '250000',
-    DV_KHAM_LAO_KHOA: '180000',
-    DV_KHAM_TIM_MACH: '200000',
-    DV_KHAM_TIEU_HOA: '180000',
-    DV_KHAM_HO_HAP: '170000',
-    DV_KHAM_NOI_TIET: '220000',
-    DV_KHAM_DINH_DUONG: '150000',
-    DT_TRUYEN_DICH: '250000',
-    DT_TIEM_KHANG_SINH: '80000',
-    DV_KHAM_RANG: '200000',
-    DV_LAY_CAO: '150000',
-    DV_KHAM_NIENG_RANG: '300000',
-    DV_KHAM_IMPLANT: '300000',
-    DT_HAN_RANG: '300000',
-    DT_RANG_TUY: '1200000',
-    DT_NHO_RANG_KHON: '1000000',
-    DT_TAY_TRANG: '2000000',
-    DV_KHAM_TMH: '180000',
-    DV_NOI_SOI_TMH: '250000',
-    DV_KHAM_THINH_LUC: '200000',
-    DT_KHIDUNG: '450000',
-    DT_VIEM_AMIDAN: '600000',
-    DT_RUA_XOANG: '350000',
-    DT_LAY_DI_VAT: '400000',
-    XN_MAU: '250000',
-    SA_O_BUNG: '300000',
-    XN_NUOC_TIEU: '120000',
-    XN_SINH_HOA: '350000',
-    XN_DUONG_HUYET: '80000',
-  }))
-
+  const [services, setServices] = useState([])
+  const [priceDrafts, setPriceDrafts] = useState({})
   const [activeMenu, setActiveMenu] = useState('staff')
-  const [staffList, setStaffList] = useState([
-    {
-      MaNhanSu: 'BS001',
-      HoTen: 'Nguyễn Văn An',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Nội tổng quát',
-      SDT: '0911222333',
-      MatKhau: 'hashed_bs001',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS002',
-      HoTen: 'Lê Thị Bình',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Răng hàm mặt',
-      SDT: '0922333444',
-      MatKhau: 'hashed_bs002',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS003',
-      HoTen: 'Phạm Hoàng Long',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Tai mũi họng',
-      SDT: '0933444555',
-      MatKhau: 'hashed_bs003',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS004',
-      HoTen: 'Trần Thu Hà',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Nội tổng quát',
-      SDT: '0912000004',
-      MatKhau: 'hashed_bs004',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS005',
-      HoTen: 'Đỗ Minh Quân',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Răng hàm mặt',
-      SDT: '0912000005',
-      MatKhau: 'hashed_bs005',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS006',
-      HoTen: 'Vũ Hải Yến',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Tai mũi họng',
-      SDT: '0912000006',
-      MatKhau: 'hashed_bs006',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS007',
-      HoTen: 'Hoàng Đức Mạnh',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Nội tổng quát',
-      SDT: '0912000007',
-      MatKhau: 'hashed_bs007',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS008',
-      HoTen: 'Ngô Phương Linh',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Răng hàm mặt',
-      SDT: '0912000008',
-      MatKhau: 'hashed_bs008',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS009',
-      HoTen: 'Bùi Anh Tuấn',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Tai mũi họng',
-      SDT: '0912000009',
-      MatKhau: 'hashed_bs009',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS010',
-      HoTen: 'Đặng Thùy Dương',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Nội tổng quát',
-      SDT: '0912000010',
-      MatKhau: 'hashed_bs010',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS011',
-      HoTen: 'Phan Quốc Bảo',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Răng hàm mặt',
-      SDT: '0912000011',
-      MatKhau: 'hashed_bs011',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS012',
-      HoTen: 'Mai Hương Giang',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Tai mũi họng',
-      SDT: '0912000012',
-      MatKhau: 'hashed_bs012',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS013',
-      HoTen: 'Tạ Văn Dũng',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Nội tổng quát',
-      SDT: '0912000013',
-      MatKhau: 'hashed_bs013',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS014',
-      HoTen: 'Lương Khánh Chi',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Răng hàm mặt',
-      SDT: '0912000014',
-      MatKhau: 'hashed_bs014',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS015',
-      HoTen: 'Cao Tiến Đạt',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Tai mũi họng',
-      SDT: '0912000015',
-      MatKhau: 'hashed_bs015',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS016',
-      HoTen: 'Đinh Ngọc Mai',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Nội tổng quát',
-      SDT: '0912000016',
-      MatKhau: 'hashed_bs016',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS017',
-      HoTen: 'Hồ Việt Anh',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Răng hàm mặt',
-      SDT: '0912000017',
-      MatKhau: 'hashed_bs017',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'BS018',
-      HoTen: 'Nguyễn Hồng Sơn',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Tai mũi họng',
-      SDT: '0912000018',
-      MatKhau: 'hashed_bs018',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'LT001',
-      HoTen: 'Phạm Minh Thư',
-      VaiTro: 'Lễ tân',
-      ChuyenKhoa: 'Tiếp nhận',
-      SDT: '0988777666',
-      MatKhau: 'hashed_lt001',
-      MaChiNhanh: 'CN_CG',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'LT002',
-      HoTen: 'Nguyễn Hoàng Yến',
-      VaiTro: 'Lễ tân',
-      ChuyenKhoa: 'Tiếp nhận',
-      SDT: '0988555444',
-      MatKhau: 'hashed_lt002',
-      MaChiNhanh: 'CN_HBT',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'XNV001',
-      HoTen: 'Trần Văn Cường',
-      VaiTro: 'Xét nghiệm viên',
-      ChuyenKhoa: 'Xét nghiệm',
-      SDT: '0966111222',
-      MatKhau: 'hashed_xnv001',
-      MaChiNhanh: 'CN_CG',
-      TrangThai: 'active',
-    },
-    {
-      MaNhanSu: 'XNV002',
-      HoTen: 'Vũ Hồng Ngọc',
-      VaiTro: 'Xét nghiệm viên',
-      ChuyenKhoa: 'Xét nghiệm',
-      SDT: '0966333444',
-      MatKhau: 'hashed_xnv002',
-      MaChiNhanh: 'CN_HBT',
-      TrangThai: 'active',
-    },
-  ])
-  const [patients] = useState([
-    {
-      MaBenhAn: 'BN001',
-      HoTen: 'Trần Quang Hải',
-      CCCD: '001095012345',
-      SDT: '0901234567',
-      DiaChi: 'Cầu Giấy, Hà Nội',
-      MaSoBHYT: 'DN4010123456789',
-      KyTuDauBHYT: 'DN',
-    },
-    {
-      MaBenhAn: 'BN002',
-      HoTen: 'Nguyễn Thị Mai',
-      CCCD: '001200054321',
-      SDT: '0907654321',
-      DiaChi: 'Đống Đa, Hà Nội',
-      MaSoBHYT: '',
-      KyTuDauBHYT: '',
-    },
-    {
-      MaBenhAn: 'BN003',
-      HoTen: 'Phạm Lê Minh',
-      CCCD: '001221098765',
-      SDT: '0911999888',
-      DiaChi: 'Hai Bà Trưng, Hà Nội',
-      MaSoBHYT: 'TE1010999888777',
-      KyTuDauBHYT: 'TE',
-    },
-  ])
-  const [staffForm, setStaffForm] = useState({
-    HoTen: '',
-    VaiTro: 'Bác sĩ',
-    ChuyenKhoa: 'Nội tổng quát',
-    SDT: '',
-    MatKhau: '',
-    MaChiNhanh: '',
-  })
-  const [staffSearch, setStaffSearch] = useState('')
+  const [staffList, setStaffList] = useState([])
+  const [staffReload, setStaffReload] = useState(0)
+  const [staffLoadError, setStaffLoadError] = useState('')
   const [patientSearch, setPatientSearch] = useState('')
+  const [patients, setPatients] = useState([])
+  const [patientPage, setPatientPage] = useState(0)
+  const [patientTotal, setPatientTotal] = useState(0)
+  const [patientLoading, setPatientLoading] = useState(true)
+  const [patientError, setPatientError] = useState('')
+  const [patientReload, setPatientReload] = useState(0)
   const [serviceSearch, setServiceSearch] = useState('')
   const [newServiceForm, setNewServiceForm] = useState({
     MaDichVu: '',
@@ -351,20 +52,10 @@ export default function AdminDashboard({
     ChuyenKhoa: 'Nội tổng quát',
     GiaGoc: '',
   })
-  const [branchServices, setBranchServices] = useState([
-    { MaCauHinh: 'CH_CG_KHAMNOI', MaChiNhanh: 'CN_CG', MaDichVu: 'DV_KHAM_NOI', SlotGioiHan: 15, TrangThai: 'active' },
-    { MaCauHinh: 'CH_CG_KHAMRANG', MaChiNhanh: 'CN_CG', MaDichVu: 'DV_KHAM_RANG', SlotGioiHan: 10, TrangThai: 'active' },
-    { MaCauHinh: 'CH_CG_XNMAU', MaChiNhanh: 'CN_CG', MaDichVu: 'XN_MAU', SlotGioiHan: 20, TrangThai: 'active' },
-    { MaCauHinh: 'CH_CG_SAOBUNG', MaChiNhanh: 'CN_CG', MaDichVu: 'SA_O_BUNG', SlotGioiHan: 15, TrangThai: 'active' },
-    { MaCauHinh: 'CH_CG_RANGTUY', MaChiNhanh: 'CN_CG', MaDichVu: 'DT_RANG_TUY', SlotGioiHan: 5, TrangThai: 'active' },
-    { MaCauHinh: 'CH_HBT_KHAMNOI', MaChiNhanh: 'CN_HBT', MaDichVu: 'DV_KHAM_NOI', SlotGioiHan: 15, TrangThai: 'active' },
-    { MaCauHinh: 'CH_HBT_KHAMTMH', MaChiNhanh: 'CN_HBT', MaDichVu: 'DV_KHAM_TMH', SlotGioiHan: 12, TrangThai: 'active' },
-    { MaCauHinh: 'CH_HBT_XNMAU', MaChiNhanh: 'CN_HBT', MaDichVu: 'XN_MAU', SlotGioiHan: 20, TrangThai: 'active' },
-    { MaCauHinh: 'CH_HBT_KHIDUNG', MaChiNhanh: 'CN_HBT', MaDichVu: 'DT_KHIDUNG', SlotGioiHan: 8, TrangThai: 'active' },
-  ])
+  const [branchServices, setBranchServices] = useState([])
   const [distributionForm, setDistributionForm] = useState({
-    MaChiNhanh: 'CN_CG',
-    MaDichVu: 'DV_KHAM_NOI',
+    MaChiNhanh: '',
+    MaDichVu: '',
     SlotGioiHan: '10',
   })
   const [serviceFilters, setServiceFilters] = useState({
@@ -386,12 +77,7 @@ export default function AdminDashboard({
       ].map(([key, value]) => [key, String(value)]),
     ),
   )
-  const [doctorSchedules, setDoctorSchedules] = useState([
-    { MaLichTruc: 'LT_001', MaBacSi: 'BS001', MaChiNhanh: 'CN_CG', NgayTruc: '2026-06-01', CaTruc: 1, TrangThai: 'Đang hoạt động' },
-    { MaLichTruc: 'LT_002', MaBacSi: 'BS001', MaChiNhanh: 'CN_CG', NgayTruc: '2026-06-01', CaTruc: 2, TrangThai: 'Đang hoạt động' },
-    { MaLichTruc: 'LT_003', MaBacSi: 'BS002', MaChiNhanh: 'CN_CG', NgayTruc: '2026-06-01', CaTruc: 3, TrangThai: 'Đang hoạt động' },
-    { MaLichTruc: 'LT_004', MaBacSi: 'BS003', MaChiNhanh: 'CN_HBT', NgayTruc: '2026-06-01', CaTruc: 1, TrangThai: 'Đang hoạt động' },
-  ])
+  const [doctorSchedules, setDoctorSchedules] = useState([])
   const [adminScheduleLoading, setAdminScheduleLoading] = useState(false)
   const [adminScheduleError, setAdminScheduleError] = useState('')
   const [appointments, setAppointments] = useState([
@@ -563,10 +249,10 @@ export default function AdminDashboard({
     },
   ])
   const [bulkScheduleForm, setBulkScheduleForm] = useState({
-    MaBacSi: 'BS001',
-    MaChiNhanh: 'CN_CG',
-    TuNgay: '2026-06-01',
-    DenNgay: '2026-06-07',
+    MaBacSi: '',
+    MaChiNhanh: '',
+    TuNgay: getTodayDateKey(),
+    DenNgay: getFutureDateKey(7),
     selections: {},
   })
   const todayFilter = new Date().toISOString().slice(0, 10)
@@ -592,7 +278,6 @@ export default function AdminDashboard({
   const [adminReportLoading, setAdminReportLoading] = useState(false)
   const [adminReportError, setAdminReportError] = useState('')
 
-  const clinicalDepartments = ['Nội tổng quát', 'Răng hàm mặt', 'Tai mũi họng']
   const serviceDepartments = ['Nội tổng quát', 'Răng hàm mặt', 'Tai mũi họng', 'Xét nghiệm']
   const serviceTypes = ['Khám lâm sàng', 'Xét nghiệm', 'Điều trị']
   const bhytCategories = [
@@ -602,24 +287,38 @@ export default function AdminDashboard({
   ]
 
   useEffect(() => {
-    if (catalogData?.branches?.length) {
+    if (Array.isArray(catalogData?.branches)) {
       setBranches(catalogData.branches)
+      setDistributionForm((current) => ({
+        ...current,
+        MaChiNhanh: catalogData.branches.some((branch) => branch.MaChiNhanh === current.MaChiNhanh)
+          ? current.MaChiNhanh : catalogData.branches[0]?.MaChiNhanh || '',
+      }))
     }
 
-    if (catalogData?.services?.length) {
+    if (Array.isArray(catalogData?.services)) {
       setServices(catalogData.services)
-      setPriceDrafts((current) => ({
-        ...current,
-        ...Object.fromEntries(
+      setPriceDrafts(Object.fromEntries(
           catalogData.services.map((service) => [
             service.MaDichVu,
             String(service.GiaGoc ?? ''),
           ]),
-        ),
+      ))
+      setDistributionForm((current) => ({
+        ...current,
+        MaDichVu: catalogData.services.some((service) => service.MaDichVu === current.MaDichVu)
+          ? current.MaDichVu : catalogData.services[0]?.MaDichVu || '',
       }))
     }
 
-    if (catalogData?.doctorSchedules?.length) {
+    if (Array.isArray(catalogData?.branchServices)) {
+      setBranchServices(catalogData.branchServices)
+      setSlotDrafts(Object.fromEntries(catalogData.branchServices.map((config) => [
+        config.MaCauHinh, String(config.SlotGioiHan ?? 0),
+      ])))
+    }
+
+    if (Array.isArray(catalogData?.doctorSchedules)) {
       setDoctorSchedules(
         catalogData.doctorSchedules.map((schedule) => ({
           ...schedule,
@@ -627,64 +326,99 @@ export default function AdminDashboard({
         })),
       )
 
-      const catalogDoctors = Array.from(
-        catalogData.doctorSchedules.reduce((map, schedule) => {
-          if (!schedule.MaBacSi || map.has(schedule.MaBacSi)) return map
-          map.set(schedule.MaBacSi, {
-            MaNhanSu: schedule.MaBacSi,
-            HoTen: schedule.TenBacSi || schedule.HoTen || schedule.MaBacSi,
-            VaiTro: 'Bác sĩ',
-            ChuyenKhoa: schedule.ChuyenKhoa || '',
-            SDT: schedule.SDT || '',
-            MatKhau: '',
-            TrangThai: 'active',
-          })
-          return map
-        }, new Map()).values(),
-      )
-
-      if (catalogDoctors.length) {
-        setStaffList((current) => {
-          const catalogDoctorIds = new Set(catalogDoctors.map((doctor) => doctor.MaNhanSu))
-          const remainingStaff = current.filter((staff) => !catalogDoctorIds.has(staff.MaNhanSu))
-          return [...catalogDoctors, ...remainingStaff]
-        })
-      }
     }
   }, [catalogData])
+
+  useEffect(() => {
+    if (!identityAccessToken) return
+    let active = true
+    const load = async () => {
+      try {
+        const profiles = []
+        for (let offset = 0; ; offset += 100) {
+          const page = await listStaffProfiles(identityAccessToken, { limit: 100, offset })
+          profiles.push(...page.items)
+          if (profiles.length >= page.total) break
+        }
+        const accountGroups = await Promise.all(Object.keys(STAFF_ROLE_NAMES).map(async (role) => {
+          const accounts = []
+          for (let offset = 0; ; offset += 100) {
+            const page = await listAccounts(identityAccessToken, role, offset)
+            accounts.push(...page)
+            if (page.length < 100) break
+          }
+          return accounts
+        }))
+        const activeAccounts = new Set(accountGroups.flat()
+          .filter((account) => account.is_active && !account.registration_pending)
+          .map((account) => `${account.role}:${account.subject_id}`))
+        if (active) {
+          setStaffList(profiles.filter((profile) => activeAccounts.has(`${profile.role}:${profile.staff_code}`))
+            .map((profile) => ({
+              MaNhanSu: profile.staff_code,
+              HoTen: profile.full_name,
+              VaiTro: STAFF_ROLE_NAMES[profile.role],
+              ChuyenKhoa: profile.specialty || '',
+              SDT: profile.phone || '',
+              MaChiNhanh: profile.branch_code || '',
+              TrangThai: 'active',
+            })))
+          setStaffLoadError('')
+        }
+      } catch (error) {
+        if (active) {
+          setStaffList([])
+          setStaffLoadError(error instanceof Error ? error.message : 'Không thể tải nhân viên.')
+        }
+      }
+    }
+    load()
+    return () => { active = false }
+  }, [identityAccessToken, staffReload])
+
+  useEffect(() => {
+    if (activeMenu !== 'staff' || !identityAccessToken) return
+    let active = true
+    const timer = setTimeout(async () => {
+      if (active) setPatientLoading(true)
+      try {
+        const result = await listPatients(identityAccessToken, {
+          search: patientSearch,
+          limit: PATIENT_PAGE_SIZE,
+          offset: patientPage * PATIENT_PAGE_SIZE,
+        })
+        if (active) {
+          setPatients(result.items)
+          setPatientTotal(result.total)
+          setPatientError('')
+        }
+      } catch (error) {
+        if (active) {
+          setPatients([])
+          setPatientTotal(0)
+          setPatientError(error instanceof Error ? error.message : 'Không thể tải danh sách bệnh nhân.')
+        }
+      } finally {
+        if (active) setPatientLoading(false)
+      }
+    }, patientSearch ? 250 : 0)
+    return () => { active = false; clearTimeout(timer) }
+  }, [activeMenu, identityAccessToken, patientSearch, patientPage, patientReload])
 
   const doctors = useMemo(
     () => staffList.filter((staff) => staff.VaiTro === 'Bác sĩ' && staff.TrangThai === 'active'),
     [staffList],
   )
 
-  const filteredStaffList = useMemo(() => {
-    const keyword = staffSearch.trim().toLowerCase()
-    if (!keyword) return staffList
-
-    return staffList.filter((staff) => {
-      const branchName = staff.MaChiNhanh
-        ? branches.find((branch) => branch.MaChiNhanh === staff.MaChiNhanh)?.TenChiNhanh
-        : ''
-
-      return [staff.MaNhanSu, staff.HoTen, staff.SDT, staff.VaiTro, staff.ChuyenKhoa, staff.MaChiNhanh, branchName]
-        .join(' ')
-        .toLowerCase()
-        .includes(keyword)
-    })
-  }, [branches, staffList, staffSearch])
-
-  const filteredPatients = useMemo(() => {
-    const keyword = patientSearch.trim().toLowerCase()
-    if (!keyword) return patients
-
-    return patients.filter((patient) =>
-      [patient.MaBenhAn, patient.HoTen, patient.CCCD, patient.SDT, patient.DiaChi]
-        .join(' ')
-        .toLowerCase()
-        .includes(keyword),
-    )
-  }, [patients, patientSearch])
+  useEffect(() => {
+    setBulkScheduleForm((current) => ({
+      ...current,
+      MaBacSi: doctors.some((doctor) => doctor.MaNhanSu === current.MaBacSi)
+        ? current.MaBacSi : doctors[0]?.MaNhanSu || '',
+      MaChiNhanh: branches.some((branch) => branch.MaChiNhanh === current.MaChiNhanh)
+        ? current.MaChiNhanh : branches[0]?.MaChiNhanh || '',
+    }))
+  }, [doctors, branches])
 
   const filteredServices = useMemo(() => {
     const keyword = serviceSearch.trim().toLowerCase()
@@ -709,7 +443,7 @@ export default function AdminDashboard({
       GiaGoc: 0,
     }
 
-  const getPatient = (maBenhAn) => patients.find((patient) => patient.MaBenhAn === maBenhAn)
+  const getPatient = (maBenhAn) => patients.find((patient) => patient.id === maBenhAn)
 
   const getBhytRate = (maBenhAn) => {
     const patient = getPatient(maBenhAn)
@@ -1064,143 +798,35 @@ export default function AdminDashboard({
   const formatMoney = (value) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value)
 
-  const handleStaffFormChange = (field, value) => {
-    if (field === 'VaiTro') {
-      const requiresFixedBranch = value === 'Lễ tân' || value === 'Xét nghiệm viên'
-      const departmentByRole = {
-        'Bác sĩ': 'Nội tổng quát',
-        'Lễ tân': 'Tiếp nhận',
-        'Xét nghiệm viên': 'Xét nghiệm',
-      }
-
-      setStaffForm((current) => ({
-        ...current,
-        VaiTro: value,
-        ChuyenKhoa: departmentByRole[value],
-        MaChiNhanh: requiresFixedBranch ? current.MaChiNhanh || branches[0]?.MaChiNhanh || '' : '',
-      }))
-      return
-    }
-
-    setStaffForm((current) => ({ ...current, [field]: value }))
-  }
-
-  const buildStaffCode = (vaiTro) => {
-    const prefixMap = {
-      'Bác sĩ': 'BS',
-      'Lễ tân': 'LT',
-      'Xét nghiệm viên': 'XNV',
-    }
-    const prefix = prefixMap[vaiTro]
-    const nextNumber =
-      staffList.filter((staff) => staff.MaNhanSu.startsWith(prefix)).length + 1
-
-    return `${prefix}${String(nextNumber).padStart(3, '0')}`
-  }
-
-  const handleAddStaff = (event) => {
-    event.preventDefault()
-    const requiresFixedBranch =
-      staffForm.VaiTro === 'Lễ tân' || staffForm.VaiTro === 'Xét nghiệm viên'
-
-    if (requiresFixedBranch && !staffForm.MaChiNhanh) {
-      notify('Vui lòng chọn chi nhánh phụ trách.', 'error')
-      return
-    }
-
-    if (requiresFixedBranch) {
-      const hasFixedStaffInBranch = staffList.some(
-        (staff) =>
-          staff.VaiTro === staffForm.VaiTro &&
-          staff.MaChiNhanh === staffForm.MaChiNhanh,
-      )
-
-      if (hasFixedStaffInBranch) {
-        notify('Mỗi chi nhánh chỉ được phép có duy nhất 1 Lễ tân và 1 Xét nghiệm viên cố định!', 'error')
-        return
-      }
-    }
-
-    const newStaff = {
-      MaNhanSu: buildStaffCode(staffForm.VaiTro),
-      HoTen: staffForm.HoTen.trim(),
-      VaiTro: staffForm.VaiTro,
-      ChuyenKhoa: staffForm.ChuyenKhoa,
-      SDT: staffForm.SDT.trim(),
-      MatKhau: staffForm.MatKhau.trim(),
-      ...(requiresFixedBranch ? { MaChiNhanh: staffForm.MaChiNhanh } : {}),
-      TrangThai: 'active',
-    }
-
-    setStaffList((current) => [...current, newStaff])
-    setStaffForm({
-      HoTen: '',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Nội tổng quát',
-      SDT: '',
-      MatKhau: '',
-      MaChiNhanh: '',
-    })
-    notify(`Đã tạo tài khoản ${newStaff.MaNhanSu} cho ${newStaff.HoTen}.`)
-  }
-
-  const handleToggleStaffStatus = (maNhanSu) => {
-    const target = staffList.find((staff) => staff.MaNhanSu === maNhanSu)
-    const nextStatus = target?.TrangThai === 'active' ? 'inactive' : 'active'
-    const nextActiveDoctor = staffList.find(
-      (staff) =>
-        staff.VaiTro === 'Bác sĩ' &&
-        staff.TrangThai === 'active' &&
-        staff.MaNhanSu !== maNhanSu,
-    )
-
-    setStaffList((current) =>
-      current.map((staff) =>
-        staff.MaNhanSu === maNhanSu ? { ...staff, TrangThai: nextStatus } : staff,
-      ),
-    )
-    if (
-      target?.VaiTro === 'Bác sĩ' &&
-      nextStatus === 'inactive' &&
-      bulkScheduleForm.MaBacSi === maNhanSu &&
-      nextActiveDoctor
-    ) {
-      setBulkScheduleForm((current) => ({ ...current, MaBacSi: nextActiveDoctor.MaNhanSu }))
-    }
-    notify(
-      nextStatus === 'active'
-        ? `Đã kích hoạt lại tài khoản ${maNhanSu}.`
-        : `Đã vô hiệu hóa tài khoản ${maNhanSu}.`,
-    )
-  }
-
-  const handleSaveSlot = (maCauHinh) => {
+  const handleSaveSlot = async (maCauHinh) => {
     const nextSlot = Math.max(0, Number(slotDrafts[maCauHinh] || 0))
-    setBranchServices((current) =>
-      current.map((config) =>
-        config.MaCauHinh === maCauHinh ? { ...config, SlotGioiHan: nextSlot } : config,
-      ),
-    )
-    setSlotDrafts((current) => ({ ...current, [maCauHinh]: String(nextSlot) }))
-    notify(`Đã cập nhật SlotGioiHan cho cấu hình ${maCauHinh}.`)
+    try {
+      const saved = await updateBranchService(identityAccessToken, maCauHinh, { SlotGioiHan: nextSlot })
+      setBranchServices((current) => current.map((config) => config.MaCauHinh === maCauHinh ? saved : config))
+      setSlotDrafts((current) => ({ ...current, [maCauHinh]: String(saved.SlotGioiHan) }))
+      notify(`Đã lưu giới hạn slot cho ${maCauHinh}.`)
+    } catch (error) {
+      notify(error.message, 'error')
+    }
   }
 
-  const handleUpdateServicePrice = (maDichVu) => {
+  const handleUpdateServicePrice = async (maDichVu) => {
     const nextPrice = Math.max(0, Number(priceDrafts[maDichVu] || 0))
-    setServices((current) =>
-      current.map((service) =>
-        service.MaDichVu === maDichVu ? { ...service, GiaGoc: nextPrice } : service,
-      ),
-    )
-    setPriceDrafts((current) => ({ ...current, [maDichVu]: String(nextPrice) }))
-    notify(`Đã cập nhật giá chung cho dịch vụ ${maDichVu}.`)
+    try {
+      const saved = await saveServicePrice(identityAccessToken, maDichVu, nextPrice)
+      setServices((current) => current.map((service) => service.MaDichVu === maDichVu ? saved : service))
+      setPriceDrafts((current) => ({ ...current, [maDichVu]: String(saved.GiaGoc) }))
+      notify(`Đã lưu giá dịch vụ ${maDichVu}.`)
+    } catch (error) {
+      notify(error.message, 'error')
+    }
   }
 
   const handleNewServiceFormChange = (field, value) => {
     setNewServiceForm((current) => ({ ...current, [field]: value }))
   }
 
-  const handleAddService = (event) => {
+  const handleAddService = async (event) => {
     event.preventDefault()
     const maDichVu = newServiceForm.MaDichVu.trim().toUpperCase()
     const tenDichVu = newServiceForm.TenDichVu.trim()
@@ -1224,53 +850,25 @@ export default function AdminDashboard({
       GiaGoc: giaGoc,
     }
 
-    setServices((current) => [...current, newService])
-    setPriceDrafts((current) => ({ ...current, [maDichVu]: String(giaGoc) }))
-    setDistributionForm((current) => ({ ...current, MaDichVu: maDichVu }))
-    setNewServiceForm({
-      MaDichVu: '',
-      TenDichVu: '',
-      LoaiDichVu: 'Khám lâm sàng',
-      ChuyenKhoa: 'Nội tổng quát',
-      GiaGoc: '',
-    })
-    notify(`Đã thêm dịch vụ ${maDichVu} vào danh mục gốc.`)
-  }
-
-  const handleDeleteRootService = (maDichVu) => {
-    const remainingServices = services.filter((service) => service.MaDichVu !== maDichVu)
-    const relatedConfigs = branchServices.filter((config) => config.MaDichVu === maDichVu)
-    const relatedConfigIds = relatedConfigs.map((config) => config.MaCauHinh)
-    const nextSelectedService =
-      distributionForm.MaDichVu === maDichVu
-        ? remainingServices[0]?.MaDichVu || ''
-        : distributionForm.MaDichVu
-
-    setServices(remainingServices)
-    setBranchServices((current) => current.filter((config) => config.MaDichVu !== maDichVu))
-    setDistributionForm((current) => ({ ...current, MaDichVu: nextSelectedService }))
-    setPriceDrafts((current) => {
-      const nextDrafts = { ...current }
-      delete nextDrafts[maDichVu]
-      return nextDrafts
-    })
-    setSlotDrafts((current) => {
-      const nextDrafts = { ...current }
-      relatedConfigIds.forEach((maCauHinh) => {
-        delete nextDrafts[maCauHinh]
+    try {
+      const saved = await createRegistryService(identityAccessToken, newService)
+      setServices((current) => [...current, saved])
+      setPriceDrafts((current) => ({ ...current, [maDichVu]: String(saved.GiaGoc) }))
+      setDistributionForm((current) => ({ ...current, MaDichVu: maDichVu }))
+      setNewServiceForm({
+        MaDichVu: '', TenDichVu: '', LoaiDichVu: 'Khám lâm sàng', ChuyenKhoa: 'Nội tổng quát', GiaGoc: '',
       })
-      return nextDrafts
-    })
-    notify(
-      `Đã xóa dịch vụ gốc ${maDichVu} và ${relatedConfigs.length} cấu hình chi nhánh liên quan.`,
-    )
+      notify(`Đã lưu dịch vụ ${maDichVu} vào Registry.`)
+    } catch (error) {
+      notify(error.message, 'error')
+    }
   }
 
   const handleBranchFormChange = (field, value) => {
     setBranchForm((current) => ({ ...current, [field]: value }))
   }
 
-  const handleAddBranch = (event) => {
+  const handleAddBranch = async (event) => {
     event.preventDefault()
     const maChiNhanh = branchForm.MaChiNhanh.trim().toUpperCase()
     const tenChiNhanh = branchForm.TenChiNhanh.trim()
@@ -1293,44 +891,15 @@ export default function AdminDashboard({
       SDT: branchForm.SDT.trim(),
     }
 
-    setBranches((current) => [...current, newBranch])
-    setDistributionForm((current) => ({ ...current, MaChiNhanh: maChiNhanh }))
-    setBranchForm({ MaChiNhanh: '', TenChiNhanh: '', DiaChi: '', SDT: '' })
-    notify(`Đã thêm chi nhánh ${maChiNhanh}.`)
-  }
-
-  const handleDeleteRootBranch = (maChiNhanh) => {
-    const remainingBranches = branches.filter((branch) => branch.MaChiNhanh !== maChiNhanh)
-    const relatedConfigs = branchServices.filter((config) => config.MaChiNhanh === maChiNhanh)
-    const relatedConfigIds = relatedConfigs.map((config) => config.MaCauHinh)
-    const relatedSchedules = doctorSchedules.filter((schedule) => schedule.MaChiNhanh === maChiNhanh)
-    const nextSelectedBranch =
-      distributionForm.MaChiNhanh === maChiNhanh
-        ? remainingBranches[0]?.MaChiNhanh || ''
-        : distributionForm.MaChiNhanh
-
-    setBranches(remainingBranches)
-    setBranchServices((current) => current.filter((config) => config.MaChiNhanh !== maChiNhanh))
-    setDoctorSchedules((current) => current.filter((schedule) => schedule.MaChiNhanh !== maChiNhanh))
-    setDistributionForm((current) => ({ ...current, MaChiNhanh: nextSelectedBranch }))
-    setBulkScheduleForm((current) => ({
-      ...current,
-      MaChiNhanh: current.MaChiNhanh === maChiNhanh ? nextSelectedBranch : current.MaChiNhanh,
-    }))
-    setServiceFilters((current) => ({
-      ...current,
-      MaChiNhanh: current.MaChiNhanh === maChiNhanh ? 'all' : current.MaChiNhanh,
-    }))
-    setSlotDrafts((current) => {
-      const nextDrafts = { ...current }
-      relatedConfigIds.forEach((maCauHinh) => {
-        delete nextDrafts[maCauHinh]
-      })
-      return nextDrafts
-    })
-    notify(
-      `Đã xóa chi nhánh ${maChiNhanh}, ${relatedConfigs.length} cấu hình dịch vụ và ${relatedSchedules.length} lịch trực liên quan.`,
-    )
+    try {
+      const saved = await createBranch(identityAccessToken, newBranch)
+      setBranches((current) => [...current, saved])
+      setDistributionForm((current) => ({ ...current, MaChiNhanh: maChiNhanh }))
+      setBranchForm({ MaChiNhanh: '', TenChiNhanh: '', DiaChi: '', SDT: '' })
+      notify(`Đã lưu chi nhánh ${maChiNhanh} vào Registry.`)
+    } catch (error) {
+      notify(error.message, 'error')
+    }
   }
 
   const handleDistributionFormChange = (field, value) => {
@@ -1343,7 +912,7 @@ export default function AdminDashboard({
     return `CH_${branchSuffix}_${serviceSuffix}`.replaceAll('__', '_')
   }
 
-  const handleApplyBranchService = (event) => {
+  const handleApplyBranchService = async (event) => {
     event.preventDefault()
     if (!distributionForm.MaChiNhanh || !distributionForm.MaDichVu) {
       notify('Cần có ít nhất một chi nhánh và một dịch vụ để áp dụng cấu hình.', 'error')
@@ -1357,20 +926,7 @@ export default function AdminDashboard({
         config.MaDichVu === distributionForm.MaDichVu,
     )
 
-    if (existingConfig) {
-      setBranchServices((current) =>
-        current.map((config) =>
-          config.MaCauHinh === existingConfig.MaCauHinh
-            ? { ...config, SlotGioiHan: slot, TrangThai: 'active' }
-            : config,
-        ),
-      )
-      setSlotDrafts((current) => ({ ...current, [existingConfig.MaCauHinh]: String(slot) }))
-      notify(`Đã cập nhật và hiển thị lại cấu hình ${existingConfig.MaCauHinh}.`)
-      return
-    }
-
-    const maCauHinh = buildBranchServiceCode(distributionForm.MaChiNhanh, distributionForm.MaDichVu)
+    const maCauHinh = existingConfig?.MaCauHinh || buildBranchServiceCode(distributionForm.MaChiNhanh, distributionForm.MaDichVu)
     const newConfig = {
       MaCauHinh: maCauHinh,
       MaChiNhanh: distributionForm.MaChiNhanh,
@@ -1379,35 +935,28 @@ export default function AdminDashboard({
       TrangThai: 'active',
     }
 
-    setBranchServices((current) => [...current, newConfig])
-    setSlotDrafts((current) => ({ ...current, [maCauHinh]: String(slot) }))
-    notify(`Đã áp dụng dịch vụ ${distributionForm.MaDichVu} cho ${distributionForm.MaChiNhanh}.`)
+    try {
+      const saved = await saveBranchService(identityAccessToken, newConfig)
+      setBranchServices((current) => existingConfig
+        ? current.map((config) => config.MaCauHinh === maCauHinh ? saved : config)
+        : [...current, saved])
+      setSlotDrafts((current) => ({ ...current, [maCauHinh]: String(saved.SlotGioiHan) }))
+      notify(`Đã lưu cấu hình ${maCauHinh} vào Registry.`)
+    } catch (error) {
+      notify(error.message, 'error')
+    }
   }
 
-  const handleToggleBranchService = (maCauHinh) => {
+  const handleToggleBranchService = async (maCauHinh) => {
     const target = branchServices.find((config) => config.MaCauHinh === maCauHinh)
     const nextStatus = target?.TrangThai === 'active' ? 'inactive' : 'active'
-
-    setBranchServices((current) =>
-      current.map((config) =>
-        config.MaCauHinh === maCauHinh ? { ...config, TrangThai: nextStatus } : config,
-      ),
-    )
-    notify(
-      nextStatus === 'active'
-        ? `Đã hiện lại cấu hình ${maCauHinh}.`
-        : `Đã ẩn cấu hình ${maCauHinh}.`,
-    )
-  }
-
-  const handleDeleteBranchService = (maCauHinh) => {
-    setBranchServices((current) => current.filter((config) => config.MaCauHinh !== maCauHinh))
-    setSlotDrafts((current) => {
-      const nextDrafts = { ...current }
-      delete nextDrafts[maCauHinh]
-      return nextDrafts
-    })
-    notify(`Đã xóa cấu hình ${maCauHinh} khỏi chi nhánh.`)
+    try {
+      const saved = await updateBranchService(identityAccessToken, maCauHinh, { TrangThai: nextStatus })
+      setBranchServices((current) => current.map((config) => config.MaCauHinh === maCauHinh ? saved : config))
+      notify(nextStatus === 'active' ? `Đã hiện lại ${maCauHinh}.` : `Đã ẩn ${maCauHinh}.`)
+    } catch (error) {
+      notify(error.message, 'error')
+    }
   }
 
   const handleBulkScheduleFormChange = (field, value) => {
@@ -1461,17 +1010,12 @@ export default function AdminDashboard({
     if (scheduleFilters.MaBacSi !== 'all') params.set('ma_bac_si', scheduleFilters.MaBacSi)
 
     try {
-      const response = await listDoctorSchedules(params.toString())
-      const result = await response.json()
-
-      if (!response.ok || !result?.success) {
-        throw new Error(result?.message || 'Không thể tải lịch trực từ database.')
-      }
-
-      setDoctorSchedules((result.data || []).map(normalizeAdminSchedule))
+      const result = await listDoctorSchedules(params.toString())
+      setDoctorSchedules(result.map(normalizeAdminSchedule))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể tải lịch trực từ database.'
       setAdminScheduleError(message)
+      setDoctorSchedules([])
       console.warn('ADMIN_SCHEDULE_LOAD_FAILED', message)
     } finally {
       setAdminScheduleLoading(false)
@@ -1543,7 +1087,6 @@ export default function AdminDashboard({
         ),
     )
     const newSchedules = []
-    let runningIndex = doctorSchedules.length + 1
 
     for (
       const cursor = new Date(startDate);
@@ -1559,15 +1102,12 @@ export default function AdminDashboard({
 
         if (selected && !existingKeys.has(duplicateKey)) {
           newSchedules.push({
-            MaLichTruc: `LT_${String(runningIndex).padStart(3, '0')}`,
             MaBacSi: bulkScheduleForm.MaBacSi,
             MaChiNhanh: bulkScheduleForm.MaChiNhanh,
             NgayTruc: ngayTruc,
             CaTruc: ca,
-            TrangThai: 'Đang hoạt động',
           })
           existingKeys.add(duplicateKey)
-          runningIndex += 1
         }
       }
     }
@@ -1578,33 +1118,7 @@ export default function AdminDashboard({
     }
 
     try {
-      const createdSchedules = []
-
-      for (const schedule of newSchedules) {
-        const formData = new FormData()
-        formData.append('ma_bac_si', schedule.MaBacSi)
-        formData.append('ma_chi_nhanh', schedule.MaChiNhanh)
-        formData.append('ngay_truc', schedule.NgayTruc)
-        formData.append('ca_truc', String(schedule.CaTruc))
-
-        const response = await createDoctorSchedules({
-          method: 'POST',
-          body: formData,
-        })
-        const result = await response.json()
-
-        if (!response.ok || !result?.success) {
-          throw new Error(result?.message || `Không thể tạo lịch trực ngày ${schedule.NgayTruc} ca ${schedule.CaTruc}.`)
-        }
-
-        createdSchedules.push({
-          ...schedule,
-          id: result.data?.id ?? null,
-          MaLichTruc: result.data?.MaLichTruc || schedule.MaLichTruc,
-        })
-      }
-
-      setDoctorSchedules((current) => [...current, ...createdSchedules])
+      const createdSchedules = await createDoctorSchedules(identityAccessToken, newSchedules)
       await loadAdminDoctorSchedules()
       notify(`Đã xếp ${createdSchedules.length} ca trực mới cho ${getDoctorName(bulkScheduleForm.MaBacSi)}.`)
     } catch (error) {
@@ -1791,204 +1305,67 @@ export default function AdminDashboard({
 
   const renderStaffManagement = () => (
     <div className="admin-stack">
+      <IdentityStaffAccounts accessToken={identityAccessToken} showNotification={showNotification} onChanged={() => setStaffReload((value) => value + 1)} />
+      {staffLoadError && <p role="alert" className="admin-feedback">{staffLoadError}</p>}
       <section className="admin-card">
         <div className="admin-section-header">
           <div>
-            <h2>Quản lý Nhân sự</h2>
-            <p>Tạo tài khoản cho Bác sĩ, Lễ tân và Xét nghiệm viên theo đúng mã định danh hệ thống.</p>
+            <h2>Danh sách bệnh nhân</h2>
+            <p>Hồ sơ thật từ Registry. Họ tên và số điện thoại sẽ hiện sau khi bệnh nhân cập nhật hồ sơ.</p>
           </div>
-        </div>
-
-        <form className="admin-form-grid" onSubmit={handleAddStaff}>
-          <label>
-            Họ tên
-            <input
-              className="admin-input"
-              value={staffForm.HoTen}
-              onChange={(event) => handleStaffFormChange('HoTen', event.target.value)}
-              required
-            />
-          </label>
-          <label>
-            Vai trò
-            <select
-              className="admin-input"
-              value={staffForm.VaiTro}
-              onChange={(event) => handleStaffFormChange('VaiTro', event.target.value)}
-            >
-              <option value="Bác sĩ">Bác sĩ</option>
-              <option value="Lễ tân">Lễ tân</option>
-              <option value="Xét nghiệm viên">Xét nghiệm viên</option>
-            </select>
-          </label>
-          <label>
-            Chuyên khoa/Bộ phận
-            <select
-              className="admin-input"
-              value={staffForm.ChuyenKhoa}
-              onChange={(event) => handleStaffFormChange('ChuyenKhoa', event.target.value)}
-              disabled={staffForm.VaiTro !== 'Bác sĩ'}
-            >
-              {staffForm.VaiTro === 'Bác sĩ' ? (
-                clinicalDepartments.map((department) => (
-                  <option key={department} value={department}>
-                    {department}
-                  </option>
-                ))
-              ) : (
-                <option value={staffForm.ChuyenKhoa}>{staffForm.ChuyenKhoa}</option>
-              )}
-            </select>
-          </label>
-          {(staffForm.VaiTro === 'Lễ tân' || staffForm.VaiTro === 'Xét nghiệm viên') && (
-            <label className="admin-fixed-branch-field">
-              Chi nhánh phụ trách
-              <select
-                className="admin-input"
-                value={staffForm.MaChiNhanh}
-                onChange={(event) => handleStaffFormChange('MaChiNhanh', event.target.value)}
-                required
-              >
-                {branches.map((branch) => (
-                  <option key={branch.MaChiNhanh} value={branch.MaChiNhanh}>
-                    {branch.TenChiNhanh}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label>
-            Số điện thoại
-            <input
-              className="admin-input"
-              value={staffForm.SDT}
-              onChange={(event) => handleStaffFormChange('SDT', event.target.value)}
-              required
-            />
-          </label>
-          <label>
-            Mật khẩu
-            <input
-              className="admin-input"
-              type="password"
-              value={staffForm.MatKhau}
-              onChange={(event) => handleStaffFormChange('MatKhau', event.target.value)}
-              required
-            />
-          </label>
-          <button type="submit" className="admin-primary-button">
-            Thêm nhân sự
+          <button type="button" className="admin-secondary-button" onClick={() => { setPatientLoading(true); setPatientReload((value) => value + 1) }} disabled={patientLoading}>
+            Làm mới
           </button>
-        </form>
-
-        <label className="admin-search-field">
-          <span>Tìm kiếm nhân sự</span>
-          <input
-            className="admin-input"
-            value={staffSearch}
-            onChange={(event) => setStaffSearch(event.target.value)}
-            placeholder="Tìm theo mã, họ tên, SĐT, vai trò hoặc chuyên khoa"
-          />
-        </label>
-
-        <div className="admin-table-wrap">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Mã nhân sự</th>
-                <th>Họ tên</th>
-                <th>Vai trò</th>
-                <th>Chuyên khoa/Bộ phận</th>
-                <th>Chi nhánh phụ trách</th>
-                <th>Số điện thoại</th>
-                <th>Trạng thái</th>
-                <th>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStaffList.map((staff) => (
-                <tr key={staff.MaNhanSu}>
-                  <td>{staff.MaNhanSu}</td>
-                  <td>{staff.HoTen}</td>
-                  <td>{staff.VaiTro}</td>
-                  <td>{staff.ChuyenKhoa}</td>
-                  <td>{staff.MaChiNhanh ? getBranchName(staff.MaChiNhanh) : 'Linh hoạt theo lịch trực'}</td>
-                  <td>{staff.SDT}</td>
-                  <td>
-                    <span className={`status-pill ${staff.TrangThai === 'active' ? 'active' : 'muted'}`}>
-                      {staff.TrangThai === 'active' ? 'Đang hoạt động' : 'Đã khóa'}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className={
-                        staff.TrangThai === 'active'
-                          ? 'admin-danger-button'
-                          : 'admin-success-button'
-                      }
-                      onClick={() => handleToggleStaffStatus(staff.MaNhanSu)}
-                    >
-                      {staff.TrangThai === 'active' ? 'Vô hiệu hóa' : 'Kích hoạt lại'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filteredStaffList.length === 0 && (
-                <tr>
-                  <td colSpan="8">Không tìm thấy nhân sự phù hợp.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
         </div>
-      </section>
-
-      <section className="admin-card">
-        <h2>Danh sách Bệnh nhân</h2>
-        <p>Bệnh nhân chỉ theo dõi tại Admin; tài khoản được tạo từ màn hình đăng ký bệnh nhân.</p>
         <label className="admin-search-field">
           <span>Tìm kiếm bệnh nhân</span>
           <input
             className="admin-input"
             value={patientSearch}
-            onChange={(event) => setPatientSearch(event.target.value)}
-            placeholder="Tìm theo mã bệnh án, CCCD, họ tên, SĐT hoặc địa chỉ"
+            onChange={(event) => { setPatientLoading(true); setPatientSearch(event.target.value); setPatientPage(0) }}
+            placeholder="Tìm theo CCCD, họ tên hoặc số điện thoại"
+            maxLength={100}
           />
         </label>
+        {patientError && <p className="admin-feedback" role="alert">{patientError}</p>}
         <div className="admin-table-wrap">
           <table className="admin-table">
             <thead>
               <tr>
-                <th>Mã bệnh án</th>
+                <th>Mã hồ sơ</th>
                 <th>Họ tên</th>
                 <th>Số CCCD</th>
                 <th>Số điện thoại</th>
-                <th>Địa chỉ</th>
-                <th>Mã số BHYT</th>
-                <th>Ký tự đầu BHYT</th>
+                <th>Ngày sinh</th>
               </tr>
             </thead>
             <tbody>
-              {filteredPatients.map((patient) => (
-                <tr key={patient.MaBenhAn}>
-                  <td>{patient.MaBenhAn}</td>
-                  <td>{patient.HoTen}</td>
-                  <td>{patient.CCCD}</td>
-                  <td>{patient.SDT}</td>
-                  <td>{patient.DiaChi}</td>
-                  <td>{patient.MaSoBHYT || 'Không có'}</td>
-                  <td>{patient.KyTuDauBHYT || 'Không có'}</td>
+              {!patientLoading && !patientError && patients.map((patient) => (
+                <tr key={patient.id}>
+                  <td title={patient.id}>{patient.id.slice(0, 8)}…</td>
+                  <td>{patient.full_name || 'Chưa cập nhật'}</td>
+                  <td>{patient.cccd}</td>
+                  <td>{patient.phone || 'Chưa cập nhật'}</td>
+                  <td>{patient.date_of_birth || 'Chưa cập nhật'}</td>
                 </tr>
               ))}
-              {filteredPatients.length === 0 && (
+              {(patientLoading || patientError || patients.length === 0) && (
                 <tr>
-                  <td colSpan="7">Không tìm thấy bệnh nhân phù hợp.</td>
+                  <td colSpan="5">{patientLoading ? 'Đang tải bệnh nhân...' : patientError ? 'Không thể tải danh sách. Hãy thử làm mới.' : 'Không tìm thấy bệnh nhân phù hợp.'}</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+        {!patientError && patientTotal > 0 && (
+          <div className="admin-patient-pagination">
+            <span>Hiển thị {patientPage * PATIENT_PAGE_SIZE + 1}–{Math.min((patientPage + 1) * PATIENT_PAGE_SIZE, patientTotal)} / {patientTotal} bệnh nhân</span>
+            <div className="admin-actions-row">
+              <button type="button" className="admin-secondary-button" disabled={patientLoading || patientPage === 0} onClick={() => { setPatientLoading(true); setPatientPage((page) => page - 1) }}>Trang trước</button>
+              <button type="button" className="admin-secondary-button" disabled={patientLoading || (patientPage + 1) * PATIENT_PAGE_SIZE >= patientTotal} onClick={() => { setPatientLoading(true); setPatientPage((page) => page + 1) }}>Trang sau</button>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   )
@@ -2118,13 +1495,6 @@ export default function AdminDashboard({
                       >
                         Cập nhật giá
                       </button>
-                      <button
-                        type="button"
-                        className="admin-delete-button"
-                        onClick={() => handleDeleteRootService(service.MaDichVu)}
-                      >
-                        Xóa gốc
-                      </button>
                     </div>
                   </td>
                 </tr>
@@ -2195,15 +1565,6 @@ export default function AdminDashboard({
               <span>{branch.TenChiNhanh}</span>
               <small>{branch.DiaChi}</small>
               <small>{branch.SDT || 'Chưa có số điện thoại'}</small>
-              <div className="admin-branch-card-actions">
-                <button
-                  type="button"
-                  className="admin-delete-button"
-                  onClick={() => handleDeleteRootBranch(branch.MaChiNhanh)}
-                >
-                  Xóa chi nhánh
-                </button>
-              </div>
             </div>
           ))}
         </div>
@@ -2358,13 +1719,6 @@ export default function AdminDashboard({
                           onClick={() => handleToggleBranchService(config.MaCauHinh)}
                         >
                           {config.TrangThai === 'active' ? 'Ẩn' : 'Hiện'}
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-delete-button"
-                          onClick={() => handleDeleteBranchService(config.MaCauHinh)}
-                        >
-                          Xóa
                         </button>
                       </div>
                     </td>
@@ -2529,7 +1883,6 @@ export default function AdminDashboard({
             </thead>
             <tbody>
               {filteredDoctorSchedules.map((schedule) => {
-                const appointmentCount = getAppointmentCountForSchedule(schedule)
                 const isCancelled = schedule.TrangThai === 'Đã hủy'
                 return (
                   <tr key={schedule.id ? `schedule-${schedule.id}` : `${schedule.MaLichTruc}-${schedule.MaBacSi}-${schedule.MaChiNhanh}-${schedule.NgayTruc}-${schedule.CaTruc}`}>
@@ -2537,32 +1890,13 @@ export default function AdminDashboard({
                     <td>{getBranchName(schedule.MaChiNhanh)}</td>
                     <td>{schedule.NgayTruc}</td>
                     <td>Ca {schedule.CaTruc}</td>
-                    <td>{appointmentCount}</td>
+                    <td>Chưa liên kết Appointment</td>
                     <td>
                       <span className={`status-pill ${isCancelled ? 'danger' : 'active'}`}>
                         {isCancelled ? 'Đã hủy' : 'Đang hoạt động'}
                       </span>
                     </td>
-                    <td>
-                      <div className="admin-actions-row">
-                        <button
-                          type="button"
-                          className="admin-secondary-button"
-                          onClick={() => handleOpenDoctorTransfer(schedule)}
-                          disabled={isCancelled}
-                        >
-                          🔄 Đổi bác sĩ
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-danger-button"
-                          onClick={() => handleCancelSchedule(schedule)}
-                          disabled={isCancelled}
-                        >
-                          {isCancelled ? 'Đã hủy' : 'Hủy ca trực'}
-                        </button>
-                      </div>
-                    </td>
+                    <td>Chưa hỗ trợ hủy/chuyển ca</td>
                   </tr>
                 )
               })}

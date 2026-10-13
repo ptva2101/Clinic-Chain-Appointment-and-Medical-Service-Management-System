@@ -3,7 +3,7 @@
 > Bộ khung 7 microservice và cách chạy bằng Docker Compose: [docs/microservices-base.md](docs/microservices-base.md). Backend và frontend hiện tại vẫn là phiên bản cũ trong giai đoạn chuyển đổi.
 
 Identity service đã có API đăng nhập độc lập: [hướng dẫn và OpenAPI](docs/identity-service.md). Đăng ký bệnh nhân tạo hồ sơ tối thiểu tại Registry và liên kết bằng `subject_id`: [luồng Identity–Registry](docs/registry-service.md).
-Tài khoản bệnh nhân mới đăng ký và đăng nhập qua Identity ngay tại `http://localhost:5173/` khi chạy Vite trong `Frontend/`. Các màn hình nghiệp vụ cũ chưa được nối với tài khoản mới.
+Tài khoản bệnh nhân mới đăng ký bằng CCCD; mọi vai trò đăng nhập qua Identity tại `http://localhost:5173/`. Bệnh nhân có thể xem/sửa hồ sơ cơ bản tại Registry; admin cấp tài khoản nhân viên kèm hồ sơ Registry ở dashboard. Các API nghiệp vụ cũ chưa kiểm tra token Identity; bệnh nhân mới chưa được nối với màn hình đặt lịch cũ.
 
 **Đại học Công nghệ - Đại học Quốc gia Hà Nội**
 ## 📌 Giới Thiệu

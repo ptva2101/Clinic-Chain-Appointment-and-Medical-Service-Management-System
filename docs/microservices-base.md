@@ -1,6 +1,6 @@
 # Nền tảng 7 service
 
-Đây là bộ khung cho quá trình tách backend hiện tại. Bảy service là bảy tiến trình FastAPI độc lập. **Identity đã có API đăng ký/đăng nhập; Registry đã có hồ sơ bệnh nhân tối thiểu và liên kết tài khoản**. Các nghiệp vụ khác chưa chuyển từ `Backend/`. Form bệnh nhân trên trang chính gọi Identity; các màn hình nghiệp vụ vẫn gọi backend cũ ở cổng 8000. Đây chưa phải hệ thống đặt lịch hoàn chỉnh.
+Đây là bộ khung cho quá trình tách backend hiện tại. Bảy service là bảy tiến trình FastAPI độc lập. **Identity đã có API đăng ký/đăng nhập; Registry đã có hồ sơ bệnh nhân/nhân viên và danh mục chi nhánh/dịch vụ lưu thật**. Các nghiệp vụ khác chưa chuyển từ `Backend/`. Giao diện dùng Identity và Registry cho tài khoản/hồ sơ/danh mục cơ bản; nhiều màn hình nghiệp vụ vẫn gọi backend cũ ở cổng 8000 hoặc còn dữ liệu mẫu. Đây chưa phải hệ thống đặt lịch hoàn chỉnh.
 
 | Service | Cổng local | Database riêng | Dữ liệu sẽ sở hữu |
 | --- | ---: | --- | --- |
@@ -11,6 +11,8 @@
 | Billing | 8005 | `billing_db` | Hóa đơn, thanh toán mô phỏng, hoàn tiền |
 | Clinical | 8006 | `clinical_db` | Lượt khám, chẩn đoán, đơn thuốc, điều trị |
 | Laboratory | 8007 | `laboratory_db` | Chỉ định xét nghiệm, kết quả |
+
+Scheduling đã có API xem/xếp ca trực bác sĩ lưu MySQL; xem [Scheduling service](scheduling-service.md). Slot giữ chỗ, đặt lịch và phối hợp hủy/chuyển ca với Appointment/Billing chưa hoàn tất.
 
 ## Chạy local
 

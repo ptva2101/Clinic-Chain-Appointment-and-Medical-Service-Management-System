@@ -40,3 +40,39 @@ export function logoutAccount(refreshToken) {
     body: JSON.stringify({ refresh_token: refreshToken }),
   })
 }
+
+export function refreshAccount(refreshToken) {
+  return request('/refresh', {
+    method: 'POST',
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  })
+}
+
+export function changeAccountPassword(accessToken, oldPassword, newPassword) {
+  return request('/change-password', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+  })
+}
+
+export function listAccounts(accessToken, role, offset = 0) {
+  return request(`/accounts?role=${encodeURIComponent(role)}&limit=100&offset=${offset}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
+
+export function createAccount(accessToken, account) {
+  return request('/accounts', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(account),
+  })
+}
+
+export function setAccountEnabled(accessToken, accountId, enabled) {
+  return request(`/accounts/${encodeURIComponent(accountId)}/${enabled ? 'enable' : 'disable'}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}

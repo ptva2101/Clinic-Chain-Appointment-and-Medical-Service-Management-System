@@ -469,8 +469,8 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
     },
   ])
 
-  const effectiveBranches = catalogData?.branches?.length ? catalogData.branches : branches
-  const effectiveServices = catalogData?.services?.length ? catalogData.services : services
+  const effectiveBranches = catalogData?.branches || []
+  const effectiveServices = catalogData?.services || []
   const catalogDoctors = Object.values(
     (catalogData?.doctorSchedules || []).reduce((doctorMap, schedule) => {
       if (!schedule.MaBacSi || doctorMap[schedule.MaBacSi]) return doctorMap
@@ -484,13 +484,9 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
       return doctorMap
     }, {}),
   )
-  const effectiveStaffList = catalogDoctors.length
-    ? catalogDoctors.concat(
-        staffList.filter((mockDoctor) => !catalogDoctors.some((doctor) => doctor.MaBacSi === mockDoctor.MaBacSi)),
-      )
-    : staffList
+  const effectiveStaffList = catalogDoctors
 
-  const maChiNhanh = user?.MaChiNhanh || effectiveBranches[0]?.MaChiNhanh || 'CN_CG'
+  const maChiNhanh = user?.MaChiNhanh || effectiveBranches[0]?.MaChiNhanh || ''
   const currentBranch = effectiveBranches.find((branch) => branch.MaChiNhanh === maChiNhanh) || effectiveBranches[0]
   const branchDoctorsToday = useMemo(() => {
     const doctorMap = (catalogData?.doctorSchedules || [])

@@ -129,12 +129,14 @@ class IdentityRepository:
             async with connection.cursor() as cursor:
                 if role is None:
                     await cursor.execute(
-                        "SELECT id, role, username, subject_id, is_active FROM accounts ORDER BY created_at, id LIMIT %s OFFSET %s",
+                        "SELECT id, role, username, subject_id, is_active, registration_pending "
+                        "FROM accounts ORDER BY created_at, id LIMIT %s OFFSET %s",
                         (limit, offset),
                     )
                 else:
                     await cursor.execute(
-                        "SELECT id, role, username, subject_id, is_active FROM accounts WHERE role = %s "
+                        "SELECT id, role, username, subject_id, is_active, registration_pending "
+                        "FROM accounts WHERE role = %s "
                         "ORDER BY created_at, id LIMIT %s OFFSET %s",
                         (role, limit, offset),
                     )
@@ -172,6 +174,46 @@ class IdentityRepository:
                 await connection.rollback()
                 raise
         return await self.find_by_id(account_id)
+
+    async def create_pending_staff(
+        self, account_id: str, role: str, username: str, staff_code: str, password_hash: str
+    ) -> dict:
+        pool = await self.database.pool()
+        async with pool.acquire() as connection:
+            try:
+                async with connection.cursor() as cursor:
+                    await cursor.execute(
+                        "INSERT INTO accounts "
+                        "(id, role, username, subject_id, password_hash, is_active, registration_pending) "
+                        "VALUES (%s, %s, %s, %s, %s, FALSE, TRUE)",
+                        (account_id, role, username, staff_code, password_hash),
+                    )
+                await connection.commit()
+            except Exception:
+                await connection.rollback()
+                raise
+        return await self.find_by_id(account_id)
+
+    async def activate_staff_profile(self, account_id: str, role: str, staff_code: str) -> dict | None:
+        pool = await self.database.pool()
+        async with pool.acquire() as connection:
+            try:
+                async with connection.cursor() as cursor:
+                    await cursor.execute(
+                        "UPDATE accounts SET is_active = TRUE, registration_pending = FALSE "
+                        "WHERE id = %s AND role = %s AND subject_id = %s "
+                        "AND registration_pending = TRUE AND is_active = FALSE",
+                        (account_id, role, staff_code),
+                    )
+                await connection.commit()
+            except Exception:
+                await connection.rollback()
+                raise
+        account = await self.find_by_id(account_id)
+        if (account and account["role"] == role and account["subject_id"] == staff_code
+                and account["is_active"] and not account["registration_pending"]):
+            return account
+        return None
 
     async def link_patient_profile(self, account_id: str, profile_id: str) -> dict | None:
         pool = await self.database.pool()

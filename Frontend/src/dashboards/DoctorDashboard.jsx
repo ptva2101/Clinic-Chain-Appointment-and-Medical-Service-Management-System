@@ -4,13 +4,12 @@ import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
 import { getDoctorQueue, updateAppointmentStatus } from '../api/appointment.js'
 import { completeAppointment, completeTreatmentSession, getCompletedEncounters, getDoctorPatientHistory, getEncounterDetail } from '../api/clinical.js'
 
-export default function DoctorDashboard({ user, onLogout, showNotification, scheduleAdjustments = [], catalogData = EMPTY_CATALOG_DATA }) {
+export default function DoctorDashboard({ user, onLogout, onChangePassword, showNotification, scheduleAdjustments = [], catalogData = EMPTY_CATALOG_DATA }) {
   const [doctorProfile, setDoctorProfile] = useState({
     MaBacSi: user?.MaBacSi || user?.id || 'BS001',
     HoTen: user?.HoTen || user?.name || 'Nguyễn Văn An',
     ChuyenKhoa: user?.ChuyenKhoa || 'Nội tổng quát',
     SDT: user?.SDT || '0911222333',
-    MatKhau: user?.MatKhau || '123456',
     MaChiNhanh: user?.MaChiNhanh || 'CN_CG',
     TenChiNhanh: user?.TenChiNhanh || 'Medicare - Cơ sở Cầu Giấy',
   })
@@ -102,78 +101,7 @@ export default function DoctorDashboard({ user, onLogout, showNotification, sche
     { MaDichVu: 'DT_RANG_TUY', TenDichVu: 'Liệu Trình Điều Trị Tủy Răng Toàn Diện', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Điều trị', GiaGoc: 1200000 },
     { MaDichVu: 'DT_KHIDUNG', TenDichVu: 'Liệu Trình Khí Dung Mũi Họng', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Điều trị', GiaGoc: 450000 },
   ])
-  const generateDoctorSchedules = () => {
-    const doctorSeeds = [
-      { MaBacSi: 'BS001', offset: 0 },
-      { MaBacSi: 'BS002', offset: 2 },
-      { MaBacSi: 'BS015', offset: 4 },
-    ]
-    const generatedSchedules = []
-    let runningIndex = 1
-
-    doctorSeeds.forEach((doctorSeed) => {
-      for (
-        let time = Date.UTC(2026, 4, 31), dayIndex = 0;
-        time <= Date.UTC(2026, 6, 1);
-        time += 86400000, dayIndex += 1
-      ) {
-        const schedulePattern = (dayIndex + doctorSeed.offset) % 7
-        const shouldWorkThisDay = [0, 1, 3, 5].includes(schedulePattern)
-        if (!shouldWorkThisDay) continue
-
-        const ngayTruc = new Date(time).toISOString().slice(0, 10)
-        const caTruc = ((dayIndex + doctorSeed.offset) % 4) + 1
-        const maChiNhanh = (dayIndex + doctorSeed.offset) % 3 === 0 ? 'CN_HBT' : 'CN_CG'
-
-        generatedSchedules.push({
-          MaLichTruc: `LT_${doctorSeed.MaBacSi}_${String(runningIndex).padStart(3, '0')}`,
-          MaBacSi: doctorSeed.MaBacSi,
-          MaChiNhanh: maChiNhanh,
-          NgayTruc: ngayTruc,
-          CaTruc: caTruc,
-          TrangThai: 'Đang hoạt động',
-        })
-        runningIndex += 1
-      }
-    })
-
-    return generatedSchedules
-  }
-  const [baseDoctorSchedules] = useState(() => generateDoctorSchedules())
-  const catalogDoctorSchedules = (catalogData?.doctorSchedules || []).map((schedule) => ({
-    ...schedule,
-    TrangThai: schedule.TrangThai || 'Đang hoạt động',
-  }))
-  const doctorSchedules = useMemo(() => {
-    let effectiveSchedules = catalogDoctorSchedules.length ? [...catalogDoctorSchedules] : [...baseDoctorSchedules]
-    const orderedAdjustments = [...scheduleAdjustments].reverse()
-
-    orderedAdjustments.forEach((adjustment) => {
-      const matchesOriginalSlot = (schedule) =>
-        schedule.MaChiNhanh === adjustment.MaChiNhanh &&
-        schedule.NgayTruc === adjustment.NgayTruc &&
-        Number(schedule.CaTruc) === Number(adjustment.CaTruc) &&
-        schedule.MaBacSi === (adjustment.oldMaBacSi || adjustment.MaBacSi)
-
-      if (adjustment.type === 'cancel') {
-        effectiveSchedules = effectiveSchedules.filter((schedule) => !matchesOriginalSlot(schedule))
-      }
-
-      if (adjustment.type === 'transfer') {
-        effectiveSchedules = effectiveSchedules.filter((schedule) => !matchesOriginalSlot(schedule))
-        effectiveSchedules.push({
-          MaLichTruc: adjustment.MaLichTruc,
-          MaBacSi: adjustment.newMaBacSi,
-          MaChiNhanh: adjustment.MaChiNhanh,
-          NgayTruc: adjustment.NgayTruc,
-          CaTruc: adjustment.CaTruc,
-          TrangThai: 'Đang hoạt động',
-        })
-      }
-    })
-
-    return effectiveSchedules
-  }, [baseDoctorSchedules, catalogDoctorSchedules, scheduleAdjustments])
+  const doctorSchedules = catalogData?.doctorSchedules || []
   const [bookings, setBookings] = useState([
     {
       MaLichHen: 'LH_DR_001',
@@ -364,15 +292,10 @@ export default function DoctorDashboard({ user, onLogout, showNotification, sche
     },
   ])
 
-  const effectiveServices = catalogData?.services?.length ? catalogData.services : services
+  const effectiveServices = catalogData?.services || []
   const effectiveDiseases = catalogData?.diseases?.length ? catalogData.diseases : diseases
   const effectiveMedicines = catalogData?.medicines?.length ? catalogData.medicines : medicines
-  const effectiveBranches = catalogData?.branches?.length
-    ? catalogData.branches
-    : [
-        { MaChiNhanh: 'CN_CG', TenChiNhanh: 'Cơ sở Cầu Giấy' },
-        { MaChiNhanh: 'CN_HBT', TenChiNhanh: 'Cơ sở Hai Bà Trưng' },
-      ]
+  const effectiveBranches = catalogData?.branches || []
 
   const getPatient = (maBenhAn) =>
     doctorPatientMap.get(maBenhAn) ||
@@ -432,12 +355,7 @@ export default function DoctorDashboard({ user, onLogout, showNotification, sche
   }
 
   const getShortBranchName = (maChiNhanh) =>
-    effectiveBranches.find((branch) => branch.MaChiNhanh === maChiNhanh)?.TenChiNhanh ||
-    (maChiNhanh === 'CN_CG'
-      ? 'Cơ sở Cầu Giấy'
-      : maChiNhanh === 'CN_HBT'
-        ? 'Cơ sở Hai Bà Trưng'
-        : maChiNhanh)
+    effectiveBranches.find((branch) => branch.MaChiNhanh === maChiNhanh)?.TenChiNhanh || maChiNhanh
 
   const buildCurrentVisitId = (booking) =>
     booking?.MaLuotKham || (booking ? `TEMP_VISIT_${booking.MaLichHen}` : '')
@@ -793,22 +711,19 @@ export default function DoctorDashboard({ user, onLogout, showNotification, sche
     notify('Đã cập nhật số điện thoại liên hệ.')
   }
 
-  const handleChangePassword = (event) => {
+  const handleChangePassword = async (event) => {
     event.preventDefault()
-    if (passwordForm.oldPassword !== doctorProfile.MatKhau) {
-      notify('Mật khẩu cũ không chính xác.', 'error')
+    if (passwordForm.newPassword.length < 12 || passwordForm.newPassword !== passwordForm.confirmPassword) {
+      notify('Mật khẩu mới cần ít nhất 12 ký tự và phải khớp xác nhận.', 'error')
       return
     }
-
-    if (!passwordForm.newPassword || passwordForm.newPassword !== passwordForm.confirmPassword) {
-      notify('Mật khẩu mới và xác nhận mật khẩu không khớp.', 'error')
-      return
+    try {
+      await onChangePassword(passwordForm.oldPassword, passwordForm.newPassword)
+      setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' })
+      setShowPasswordForm(false)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không đổi được mật khẩu.', 'error')
     }
-
-    setDoctorProfile((current) => ({ ...current, MatKhau: passwordForm.newPassword }))
-    setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' })
-    setShowPasswordForm(false)
-    notify('Đổi mật khẩu thành công!')
   }
 
   const updateLocalDoctorBooking = (maLichHen, patch) => {

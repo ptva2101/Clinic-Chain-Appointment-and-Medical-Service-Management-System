@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from identity.api import get_registry_client, get_repository
 from identity.import_legacy import import_accounts
 from identity.main import app
-from identity.registry_client import RegistryUnavailable
+from identity.registry_client import RegistryConflict, RegistryUnavailable
 from identity.security import hash_password
 
 
@@ -45,6 +45,21 @@ class MemoryIdentityRepository:
         account["is_active"] = False
         account["registration_pending"] = True
         return account
+
+    async def create_pending_staff(self, account_id, role, username, staff_code, password_hash):
+        account = await self.create_account(account_id, role, username, staff_code, password_hash)
+        account["is_active"] = False
+        account["registration_pending"] = True
+        return account
+
+    async def activate_staff_profile(self, account_id, role, staff_code):
+        account = self.accounts[account_id]
+        if account["role"] != role or account["subject_id"] != staff_code:
+            return None
+        if account["registration_pending"] and not account["is_active"]:
+            account["is_active"] = True
+            account["registration_pending"] = False
+        return account if account["is_active"] and not account["registration_pending"] else None
 
     async def link_patient_profile(self, account_id, profile_id):
         account = self.accounts[account_id]
@@ -128,6 +143,7 @@ class MemoryIdentityRepository:
 class MemoryRegistryClient:
     def __init__(self):
         self.profiles = {}
+        self.staff_profiles = {}
         self.unavailable = False
 
     async def ensure_patient(self, account_id, cccd):
@@ -136,6 +152,18 @@ class MemoryRegistryClient:
         self.profiles.setdefault(account_id, cccd)
         assert self.profiles[account_id] == cccd
         return account_id
+
+    async def ensure_staff(self, account_id, details):
+        if self.unavailable:
+            raise RegistryUnavailable("Registry service is unavailable")
+        if any(profile["staff_code"] == details["staff_code"] and key != account_id
+               for key, profile in self.staff_profiles.items()):
+            raise RegistryConflict("Staff code is linked to another account")
+        existing = self.staff_profiles.get(account_id)
+        if existing and (existing["staff_code"] != details["staff_code"] or existing["role"] != details["role"]):
+            raise RegistryConflict("Staff code is linked to another account")
+        self.staff_profiles.setdefault(account_id, details)
+        return details["staff_code"]
 
 
 @pytest.fixture
@@ -198,6 +226,63 @@ def test_admin_provision_and_disable_account(client):
     assert login(client, "patient", "patient01", "PatientPass123!").status_code == 401
     assert client.post("/api/v1/identity/refresh", json={"refresh_token": patient_token["refresh_token"]}).status_code == 401
     assert client.patch("/api/v1/identity/accounts/admin-1/disable", headers=headers).status_code == 409
+
+
+def test_admin_provisions_staff_with_registry_before_login(client):
+    admin_token = login(client).json()["access_token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    body = {
+        "role": "doctor", "username": "BS900", "subject_id": "BS900",
+        "full_name": "Bác sĩ Nguyễn An", "password": "DoctorPassword123!",
+        "phone": "0912345678", "specialty": "Nội khoa",
+    }
+    registry = app.dependency_overrides[get_registry_client]()
+    registry.unavailable = True
+    assert client.post("/api/v1/identity/accounts", headers=headers, json=body).status_code == 503
+    repository = app.dependency_overrides[get_repository]()
+    pending = next(a for a in repository.accounts.values() if a["username"] == "BS900")
+    assert pending["registration_pending"] and not pending["is_active"]
+    listed = client.get("/api/v1/identity/accounts?role=doctor", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()[0]["registration_pending"] is True
+    assert login(client, "doctor", "BS900", body["password"]).status_code == 401
+    assert client.patch(f"/api/v1/identity/accounts/{pending['id']}/enable", headers=headers).status_code == 409
+    registry.unavailable = False
+    created = client.post("/api/v1/identity/accounts", headers=headers, json=body)
+    assert created.status_code == 201
+    assert created.json()["is_active"] is True
+    assert created.json()["registration_pending"] is False
+    assert registry.staff_profiles[pending["id"]]["full_name"] == body["full_name"]
+    assert login(client, "doctor", "BS900", body["password"]).status_code == 200
+    assert client.post("/api/v1/identity/accounts", headers=headers, json=body).status_code == 409
+
+
+def test_staff_code_conflict_leaves_new_account_disabled(client):
+    headers = {"Authorization": f"Bearer {login(client).json()['access_token']}"}
+    first = {"role": "letan", "username": "LT901", "subject_id": "LT901",
+             "full_name": "Lễ tân A", "password": "ReceptionPass123!"}
+    second = {**first, "username": "LT902"}
+    assert client.post("/api/v1/identity/accounts", headers=headers, json=first).status_code == 201
+    assert client.post("/api/v1/identity/accounts", headers=headers, json=second).status_code == 409
+    assert login(client, "letan", second["username"], second["password"]).status_code == 401
+
+
+def test_existing_active_staff_gets_minimal_registry_profile_on_login(client):
+    repository = app.dependency_overrides[get_repository]()
+    account = asyncio.run(repository.create_account(
+        "doctor-old", "doctor", "BS001", "BS001", hash_password("DoctorPassword123!")
+    ))
+    registry = app.dependency_overrides[get_registry_client]()
+    registry.unavailable = True
+    assert login(client, "doctor", "BS001", "DoctorPassword123!").status_code == 503
+    assert account["id"] not in registry.staff_profiles
+    registry.unavailable = False
+    assert login(client, "doctor", "BS001", "DoctorPassword123!").status_code == 200
+    assert registry.staff_profiles[account["id"]]["full_name"] == "BS001"
+    account["is_active"] = False
+    registry.staff_profiles.clear()
+    assert login(client, "doctor", "BS001", "DoctorPassword123!").status_code == 401
+    assert not registry.staff_profiles
 
 
 def test_openapi_exposes_identity_contract(client):

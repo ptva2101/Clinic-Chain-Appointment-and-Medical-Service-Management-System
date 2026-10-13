@@ -2,30 +2,38 @@ import { useEffect, useRef, useState } from 'react'
 import { Lock, UserRound } from 'lucide-react'
 import medicalLogoImage from './assets/medical-logo-cutout.png'
 import medicalTeamImage from './assets/medical-team-cutout.png'
-import { getTodayDateKey, getFutureDateKey } from './shared/dates.js'
 import { EMPTY_CATALOG_DATA } from './shared/catalog.js'
+import { getFutureDateKey, getTodayDateKey } from './shared/dates.js'
 import { InputField, GlobalToast } from './shared/Widgets.jsx'
+import PatientProfileForm from './shared/PatientProfileForm.jsx'
 import AdminDashboard from './dashboards/AdminDashboard.jsx'
 import DoctorDashboard from './dashboards/DoctorDashboard.jsx'
 import ReceptionistDashboard from './dashboards/ReceptionistDashboard.jsx'
 import TechnicianDashboard from './dashboards/TechnicianDashboard.jsx'
 import PatientDashboard from './dashboards/PatientDashboard.jsx'
 import { catalogEndpoints, fetchCatalog } from './api/registry.js'
-import { loginLegacyRole, restoreLegacySession } from './api/legacyAuth.js'
-import { getCurrentAccount, loginAccount, logoutAccount, registerAccount } from './api/identity.js'
-import { doctorScheduleCatalogEndpoint } from './api/scheduling.js'
+import { changeAccountPassword, getCurrentAccount, loginAccount, logoutAccount, refreshAccount, registerAccount } from './api/identity.js'
+import { getStaffProfile } from './api/staffProfile.js'
+import { listDoctorSchedules } from './api/scheduling.js'
 import './App.css'
 
-const MEDICARE_SESSION_KEY = 'medicare_session'
+const STAFF_ROLES = new Set(['doctor', 'letan', 'xnv'])
 
-const getSessionUserId = (user, selectedRole) => {
-  if (!user) return ''
-  if (selectedRole === 'patient') return user.MaBenhAn || user.CCCD || user.id || ''
-  if (selectedRole === 'doctor') return user.MaBacSi || user.id || ''
-  if (selectedRole === 'letan') return user.MaLeTan || user.id || ''
-  if (selectedRole === 'xnv') return user.MaXNV || user.id || ''
-  if (selectedRole === 'admin') return user.username || user.id || 'admin'
-  return user.id || ''
+const toDashboardUser = (account, profile = null) => {
+  const profileId = account.subject_id || account.username
+  return {
+    id: profileId,
+    name: profile?.full_name || account.username,
+    HoTen: profile?.full_name || account.username,
+    loginRole: account.role,
+    username: account.username,
+    SDT: profile?.phone || '',
+    ChuyenKhoa: profile?.specialty || '',
+    MaChiNhanh: profile?.branch_code || '',
+    ...(account.role === 'doctor' ? { MaBacSi: profileId } : {}),
+    ...(account.role === 'letan' ? { MaLeTan: profileId } : {}),
+    ...(account.role === 'xnv' ? { MaXNV: profileId } : {}),
+  }
 }
 
 export default function App() {
@@ -42,7 +50,6 @@ export default function App() {
   const [identityAccount, setIdentityAccount] = useState(null)
   const [authBusy, setAuthBusy] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
-  const [sessionRestoring, setSessionRestoring] = useState(true)
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' })
   const [notifications, setNotifications] = useState([])
   const [scheduleAdjustments, setScheduleAdjustments] = useState([])
@@ -114,38 +121,35 @@ export default function App() {
   const loadCatalogData = async () => {
     setCatalogLoading(true)
     setCatalogError('')
-    const scheduleStartDate = getTodayDateKey()
-    const scheduleEndDate = getFutureDateKey(45)
-
-    const endpoints = {
-      ...catalogEndpoints(),
-      doctorSchedules: doctorScheduleCatalogEndpoint(scheduleStartDate, scheduleEndDate),
-    }
+    setCatalogData(EMPTY_CATALOG_DATA)
+    const endpoints = catalogEndpoints()
 
     try {
-      const entries = await Promise.all(
-        Object.entries(endpoints).map(async ([key, endpoint]) => {
-          const response = await fetchCatalog(endpoint)
-          const result = await response.json()
+      const [entries, doctorSchedules] = await Promise.all([
+        Promise.all(
+          Object.entries(endpoints).map(async ([key, endpoint]) => {
+            const response = await fetchCatalog(endpoint)
+            const result = await response.json()
 
-          if (!response.ok || !result?.success) {
-            throw new Error(result?.message || `Không thể tải ${key}`)
-          }
+            if (!response.ok || !Array.isArray(result)) {
+              throw new Error(`Không thể tải ${key} từ Registry`)
+            }
 
-          return [key, result]
-        }),
-      )
+            return [key, result]
+          }),
+        ),
+        listDoctorSchedules(new URLSearchParams({
+          from_date: getTodayDateKey(),
+          to_date: getFutureDateKey(30),
+        }).toString()),
+      ])
 
       const nextCatalog = entries.reduce(
         (accumulator, [key, result]) => ({
           ...accumulator,
-          [key]: Array.isArray(result.data) ? result.data : [],
-          meta: {
-            ...accumulator.meta,
-            [key]: result.meta || null,
-          },
+          [key]: result,
         }),
-        { ...EMPTY_CATALOG_DATA, meta: {} },
+        { ...EMPTY_CATALOG_DATA, doctorSchedules, meta: {} },
       )
 
       setCatalogData(nextCatalog)
@@ -170,145 +174,34 @@ export default function App() {
     }
   }
 
-  const getLoginRequest = (selectedRole, loginName, loginPassword) => {
-    const normalizedLoginName = loginName.trim()
-
-    if (selectedRole === 'patient') {
-      return {
-        endpoint: '/auth/login-patient',
-        payload: { cccd: normalizedLoginName, password: loginPassword },
-      }
-    }
-
-    if (selectedRole === 'doctor') {
-      return {
-        endpoint: '/auth/login-doctor',
-        payload: { MaBacSi: normalizedLoginName, username: normalizedLoginName, password: loginPassword },
-      }
-    }
-
-    if (selectedRole === 'letan') {
-      return {
-        endpoint: '/auth/login-le-tan',
-        payload: { MaLeTan: normalizedLoginName, username: normalizedLoginName, password: loginPassword },
-      }
-    }
-
-    if (selectedRole === 'xnv') {
-      return {
-        endpoint: '/auth/login_xet_nghiem_vien',
-        payload: { MaXNV: normalizedLoginName, username: normalizedLoginName, password: loginPassword },
-      }
-    }
-
-    return {
-      endpoint: '/auth/login_admin',
-      payload: { username: normalizedLoginName, password: loginPassword },
-    }
-  }
-
-  const normalizeLoggedInUser = (selectedRole, loginName, userData) => {
-    const normalizedLoginName = loginName.trim()
-    const displayName =
-      selectedRole === 'admin'
-        ? 'Quản trị viên hệ thống'
-        : userData?.HoTen || userData?.name || userData?.username || normalizedLoginName
-    const userId =
-      userData?.MaBenhAn ||
-      userData?.MaBacSi ||
-      userData?.MaLeTan ||
-      userData?.MaXNV ||
-      userData?.CCCD ||
-      userData?.username ||
-      normalizedLoginName
-
-    return {
-      ...userData,
-      name: displayName,
-      id: userId,
-      loginRole: selectedRole,
-      MatKhau: userData?.MatKhau || password,
-      MaBenhAn: userData?.MaBenhAn,
-      MaBacSi: userData?.MaBacSi,
-      MaLeTan: userData?.MaLeTan,
-      MaXNV: userData?.MaXNV,
-      CCCD: userData?.CCCD || (selectedRole === 'patient' ? normalizedLoginName : userData?.CCCD),
-      HoTen: userData?.HoTen || displayName,
-      MaChiNhanh: userData?.MaChiNhanh || '',
-      TenChiNhanh: userData?.TenChiNhanh || '',
-    }
-  }
-
-  const saveSession = (selectedRole, user) => {
-    const userId = getSessionUserId(user, selectedRole)
-    if (!userId) return
-
-    window.localStorage.setItem(
-      MEDICARE_SESSION_KEY,
-      JSON.stringify({
-        role: selectedRole,
-        userId,
-        savedAt: Date.now(),
-      }),
-    )
-  }
-
-  const clearSession = () => {
-    window.localStorage.removeItem(MEDICARE_SESSION_KEY)
-  }
-
-  const restoreSession = async () => {
-    const rawSession = window.localStorage.getItem(MEDICARE_SESSION_KEY)
-    if (!rawSession) {
-      setSessionRestoring(false)
-      return
-    }
-
-    try {
-      const parsedSession = JSON.parse(rawSession)
-      if (!parsedSession?.role || !parsedSession?.userId) {
-        clearSession()
-        setSessionRestoring(false)
-        return
-      }
-      // Patient accounts now authenticate through Identity, not legacy localStorage sessions.
-      if (parsedSession.role === 'patient') {
-        clearSession()
-        return
-      }
-
-      const response = await restoreLegacySession({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          role: parsedSession.role,
-          userId: parsedSession.userId,
-        }),
-      })
-      const result = await response.json()
-
-      if (!response.ok || !result?.success) {
-        throw new Error(result?.message || 'Phiên đăng nhập đã hết hạn hoặc không còn hợp lệ.')
-      }
-
-      const restoredUser = normalizeLoggedInUser(parsedSession.role, parsedSession.userId, result.data || {})
-      await loadCatalogData()
-      setRole(parsedSession.role)
-      setCurrentUser(restoredUser)
-      setMode(parsedSession.role)
-      saveSession(parsedSession.role, restoredUser)
-    } catch (error) {
-      clearSession()
-      const message = error instanceof Error ? error.message : 'Không thể khôi phục phiên đăng nhập.'
-      console.warn('SESSION_RESTORE_FAILED', message)
-    } finally {
-      setSessionRestoring(false)
-    }
-  }
+  useEffect(() => {
+    // Old staff sessions contained only a role and ID, not an Identity credential.
+    window.localStorage.removeItem('medicare_session')
+  }, [])
 
   useEffect(() => {
-    restoreSession()
-  }, [])
+    if (!identityTokens?.refresh_token) return undefined
+    let active = true
+    const delay = Math.max(1000, (identityTokens.expires_in - 60) * 1000)
+    const timer = window.setTimeout(async () => {
+      try {
+        const issued = await refreshAccount(identityTokens.refresh_token)
+        if (active) setIdentityTokens(issued)
+      } catch {
+        if (active) {
+          setIdentityTokens(null)
+          setIdentityAccount(null)
+          setCurrentUser(null)
+          setMode('login')
+          showNotification('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'error')
+        }
+      }
+    }, delay)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [identityTokens])
 
   const handleLogin = async (event) => {
     event.preventDefault()
@@ -319,47 +212,32 @@ export default function App() {
       return
     }
 
-    if (role === 'patient') {
-      setAuthBusy(true)
-      try {
-        const issued = await loginAccount('patient', normalizedUsername, password)
-        const account = await getCurrentAccount(issued.access_token)
-        setIdentityTokens(issued)
-        setIdentityAccount(account)
-        setPassword('')
-        showNotification('Đăng nhập Identity thành công.')
-      } catch (error) {
-        showNotification(error instanceof Error ? error.message : 'Không kết nối được Identity service.', 'error')
-      } finally {
-        setAuthBusy(false)
-      }
-      return
-    }
-
-    const { endpoint, payload } = getLoginRequest(role, normalizedUsername, password)
-
+    setAuthBusy(true)
+    let issued = null
     try {
-      const response = await loginLegacyRole(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const result = await response.json()
-
-      if (!response.ok || !result?.success) {
-        showNotification(result?.message || result?.detail || 'Sai tài khoản hoặc mật khẩu.', 'error')
-        return
+      issued = await loginAccount(role, normalizedUsername, password)
+      const account = await getCurrentAccount(issued.access_token)
+      if (account.role !== role) {
+        await logoutAccount(issued.refresh_token)
+        throw new Error('Vai trò tài khoản không khớp.')
       }
-
-      const loggedInUser = normalizeLoggedInUser(role, normalizedUsername, result.data || {})
-      await loadCatalogData()
-      setCurrentUser(loggedInUser)
-      setMode(role)
-      saveSession(role, loggedInUser)
-      showNotification('Đăng nhập thành công.', 'success')
+      const staffProfile = STAFF_ROLES.has(role) ? await getStaffProfile(issued.access_token) : null
+      setIdentityTokens(issued)
+      setIdentityAccount(account)
+      setPassword('')
+      if (role !== 'patient') {
+        setCurrentUser(toDashboardUser(account, staffProfile))
+        setMode(role)
+        loadCatalogData().catch((error) => {
+          showNotification(error instanceof Error ? error.message : 'Không thể tải danh mục Registry.', 'error')
+        })
+      }
+      showNotification('Đăng nhập Identity thành công.')
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể kết nối đến Backend FastAPI! Bạn đã bật Uvicorn chưa?'
-      showNotification(message, 'error')
+      if (issued?.refresh_token) await logoutAccount(issued.refresh_token).catch(() => {})
+      showNotification(error instanceof Error ? error.message : 'Không kết nối được Identity service.', 'error')
+    } finally {
+      setAuthBusy(false)
     }
   }
 
@@ -406,52 +284,38 @@ export default function App() {
     } finally {
       setIdentityTokens(null)
       setIdentityAccount(null)
+      setCurrentUser(null)
       setAuthBusy(false)
       setMode('login')
+      setRole('patient')
       showNotification('Đã đăng xuất.')
     }
   }
 
-	  const handleLogout = () => {
-    clearSession()
-	    setCurrentUser(null)
-	    setUsername('')
-    setPassword('')
-    setXacNhanMatKhauDangKy('')
+  const handleChangeIdentityPassword = async (oldPassword, newPassword) => {
+    if (!identityTokens?.access_token) throw new Error('Phiên đăng nhập đã kết thúc.')
+    await changeAccountPassword(identityTokens.access_token, oldPassword, newPassword)
+    setIdentityTokens(null)
+    setIdentityAccount(null)
+    setCurrentUser(null)
     setMode('login')
-	    setRole('patient')
-	  }
+    setPassword('')
+    showNotification('Đổi mật khẩu thành công. Vui lòng đăng nhập lại.')
+  }
 
 	  const handleUpdateCurrentUser = (updatedFields) => {
 	    setCurrentUser((current) => {
       if (!current) return current
-      const nextUser = { ...current, ...updatedFields }
-      saveSession(nextUser.loginRole || mode, nextUser)
-      return nextUser
+      return { ...current, ...updatedFields }
     })
 	  }
-
-  if (sessionRestoring) {
-    return renderWithToast(
-      <main className="page-shell">
-        <section className="auth-wrapper">
-          <div className="form-panel auth-session-panel">
-            <div className="brand-header">
-              <img className="brand-logo" src={medicalLogoImage} alt="Logo Medicare" />
-              <span className="brand-name">Medicare</span>
-            </div>
-            <p className="auth-session-text">Đang khôi phục phiên đăng nhập và cập nhật dữ liệu mới nhất...</p>
-          </div>
-        </section>
-      </main>,
-    )
-  }
 
 	  if (mode === 'admin') {
 	    return renderWithToast(
 	      <AdminDashboard
 	        user={currentUser}
-	        onLogout={handleLogout}
+	        onLogout={handleIdentityLogout}
+	        identityAccessToken={identityTokens?.access_token}
 	        showNotification={showNotification}
 	        addPatientNotifications={addPatientNotifications}
 	        addScheduleAdjustment={addScheduleAdjustment}
@@ -463,7 +327,8 @@ export default function App() {
 	    return renderWithToast(
 	      <DoctorDashboard
 	        user={currentUser}
-	        onLogout={handleLogout}
+	        onLogout={handleIdentityLogout}
+	        onChangePassword={handleChangeIdentityPassword}
 	        showNotification={showNotification}
 	        scheduleAdjustments={scheduleAdjustments}
 	        catalogData={catalogData}
@@ -474,7 +339,7 @@ export default function App() {
 	    return renderWithToast(
 	      <ReceptionistDashboard
 	        user={currentUser}
-	        onLogout={handleLogout}
+	        onLogout={handleIdentityLogout}
 	        showNotification={showNotification}
 	        catalogData={catalogData}
 	      />,
@@ -484,9 +349,9 @@ export default function App() {
 	    return renderWithToast(
 	      <TechnicianDashboard
 	        user={currentUser}
-	        onLogout={handleLogout}
+	        onLogout={handleIdentityLogout}
+	        onChangePassword={handleChangeIdentityPassword}
 	        showNotification={showNotification}
-	        onUpdateUser={handleUpdateCurrentUser}
 	        catalogData={catalogData}
 	      />,
 	    )
@@ -495,7 +360,7 @@ export default function App() {
 	    return renderWithToast(
 	      <PatientDashboard
 	        user={currentUser}
-	        onLogout={handleLogout}
+	        onLogout={handleIdentityLogout}
 	        onUpdateUser={handleUpdateCurrentUser}
 	        showNotification={showNotification}
 	        notifications={notifications}
@@ -539,6 +404,7 @@ export default function App() {
                 <p>Tài khoản bệnh nhân: <strong>{identityAccount.username}</strong></p>
                 <p>Mã hồ sơ Registry: <strong>{identityAccount.subject_id}</strong></p>
                 <p>Hồ sơ đã liên kết. Tính năng đặt lịch trên dashboard đang được chuyển sang các service mới.</p>
+                <PatientProfileForm accessToken={identityTokens?.access_token} showNotification={showNotification} />
                 <button className="submit-button" type="button" onClick={handleIdentityLogout} disabled={authBusy}>Đăng xuất</button>
               </div>
             )}

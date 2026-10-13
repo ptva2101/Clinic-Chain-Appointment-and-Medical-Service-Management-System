@@ -26,7 +26,7 @@ Identity tự khởi tạo/nâng cấp schema trước khi mở API, kể cả v
 | `GET /api/v1/identity/me` | Bearer token | Xem tài khoản hiện tại |
 | `POST /api/v1/identity/change-password` | Bearer token | Đổi mật khẩu; vô hiệu hóa mọi phiên cũ |
 | `GET /api/v1/identity/accounts` | Admin | Liệt kê tài khoản có phân trang/lọc vai trò, không lộ mật khẩu |
-| `POST /api/v1/identity/accounts` | Admin | Tạo tài khoản, `subject_id` là ID hồ sơ nghiệp vụ |
+| `POST /api/v1/identity/accounts` | Admin | Tạo tài khoản; với nhân viên, tạo hồ sơ Registry rồi mới kích hoạt |
 | `POST /api/v1/identity/accounts/{id}/reset-password` | Admin | Đặt lại mật khẩu, vô hiệu hóa mọi phiên cũ |
 | `PATCH /api/v1/identity/accounts/{id}/disable` | Admin | Vô hiệu hóa tài khoản và mọi phiên |
 | `PATCH /api/v1/identity/accounts/{id}/enable` | Admin | Kích hoạt lại tài khoản |
@@ -45,7 +45,7 @@ $tokens = Invoke-RestMethod -Method Post -Uri "$base/login" -ContentType 'applic
 
 Identity chỉ lưu thông tin xác thực. Khi đăng ký, Identity gọi API nội bộ của Registry để tạo hồ sơ bệnh nhân tối thiểu (CCCD), rồi lưu mã hồ sơ vào `accounts.subject_id`. Registry sở hữu bảng `patients`; hai service không truy cập database của nhau. Nếu Registry tạm lỗi, tài khoản ở trạng thái chờ và chưa đăng nhập được; gửi lại đăng ký với cùng CCCD/mật khẩu sẽ hoàn tất liên kết mà không tạo hồ sơ trùng. Tài khoản Identity bệnh nhân cũ có `subject_id` trống được bổ sung hồ sơ khi đăng nhập hợp lệ. Họ tên, ngày sinh, BHYT... chưa được thu thập/chuyển sang Registry trong luồng này; không coi hồ sơ tối thiểu là hồ sơ khám bệnh hoàn chỉnh.
 
-Frontend dùng một giao diện tại `http://localhost:5173/`: tab “Đăng ký” tạo tài khoản và hồ sơ Registry, còn đăng nhập bệnh nhân gọi Identity ngay trên trang chính. Chạy frontend:
+Frontend dùng một giao diện tại `http://localhost:5173/`: tab “Đăng ký” chỉ tạo bệnh nhân và hồ sơ Registry; tab “Đăng nhập” gọi Identity cho mọi vai trò. Admin đăng nhập bằng tài khoản bootstrap trong `.env`, sau đó vào mục quản lý nhân sự để cấp tài khoản Identity cho bác sĩ, lễ tân và xét nghiệm viên (mã đăng nhập, mã nhân sự, họ tên, mật khẩu tối thiểu 12 ký tự). Registry tạo hồ sơ nhân viên trước khi Identity kích hoạt tài khoản. Tài khoản nhân viên cũ không tự chuyển sang Identity. Chạy frontend:
 
 ```powershell
 cd Frontend
@@ -53,7 +53,7 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-Phiên Identity không lưu token trong `localStorage`; tải lại trang sẽ kết thúc phiên giao diện. Các màn hình khám bệnh/đặt lịch trong app chính vẫn dùng backend cũ và **chưa** được kết nối với tài khoản Identity mới, dù tài khoản đã có mã hồ sơ Registry.
+Phiên Identity không lưu token trong `localStorage`; tải lại trang sẽ kết thúc phiên giao diện. Khi trang còn mở, refresh token được xoay trong bộ nhớ trước lúc access token hết hạn. `subject_id` của nhân viên là mã hồ sơ đã liên kết ở Registry; tài khoản đang chờ Registry không đăng nhập được và không thể mở khóa trực tiếp. Các màn hình khám bệnh/đặt lịch vẫn dùng backend cũ và **chưa** kiểm tra token Identity, dù frontend đã chuyển đăng nhập nhân viên sang Identity. Bệnh nhân mới chưa dùng được dashboard đặt lịch cũ.
 
 Ví dụ đăng nhập:
 
@@ -92,7 +92,7 @@ docker run --rm --network $network --env-file services/identity/legacy-import.en
 
 3. Nếu đã kiểm tra kết quả, thêm `--apply` vào cuối lệnh để ghi. Chạy lại sẽ bỏ qua tài khoản đã nhập cùng `role`, `username`, `subject_id`; trường hợp trùng username nhưng khác `subject_id` báo `conflicts` và không ghi đè. Cần xử lý xung đột thủ công. Sau khi xác nhận người dùng đăng nhập được qua Identity, mới lên kế hoạch loại bỏ mật khẩu cũ; công cụ này **không** tự xóa dữ liệu cũ.
 
-Máy hiện chưa có cấu hình kết nối database backend cũ và người dùng đã chọn bắt đầu từ tài khoản mới, nên **không chạy import**. Frontend hiện vẫn gọi API đăng nhập/đăng ký cũ; chuyển frontend và bảo vệ các API nghiệp vụ cần làm theo giai đoạn để không làm hỏng các màn hình đang dùng.
+Máy hiện chưa có cấu hình kết nối database backend cũ và người dùng đã chọn bắt đầu từ tài khoản mới, nên **không chạy import**. Frontend đã chuyển mọi vai trò sang Identity; tài khoản nhân viên cũ cần được admin cấp lại trong Identity. Việc bảo vệ API nghiệp vụ cũ bằng token Identity vẫn chưa thực hiện.
 
 ## Kiểm thử và QoS
 

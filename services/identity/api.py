@@ -8,7 +8,7 @@ import aiomysql
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from identity.repository import IdentityRepository
 from identity.registry_client import RegistryClient, RegistryConflict, RegistryUnavailable
@@ -24,6 +24,7 @@ from identity.security import (
 
 
 Role = Literal["admin", "patient", "doctor", "letan", "xnv"]
+STAFF_ROLES = {"doctor", "letan", "xnv"}
 router = APIRouter(prefix="/api/v1/identity", tags=["Identity"])
 bearer = HTTPBearer(auto_error=False)
 
@@ -51,13 +52,34 @@ class AccountResponse(BaseModel):
     username: str
     subject_id: str | None
     is_active: bool
+    registration_pending: bool
 
 
 class CreateAccountRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     role: Role
     username: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=12, max_length=256)
-    subject_id: str | None = Field(default=None, max_length=128)
+    subject_id: str | None = Field(default=None, min_length=1, max_length=128)
+    full_name: str | None = Field(default=None, min_length=1, max_length=160)
+    phone: str | None = Field(default=None, pattern=r"^\+?[0-9]{9,15}$")
+    specialty: str | None = Field(default=None, max_length=160)
+    branch_code: str | None = Field(default=None, max_length=32)
+
+    @field_validator("subject_id", "full_name")
+    @classmethod
+    def strip_required_text(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = " ".join(value.split())
+            if not value:
+                raise ValueError("Value cannot be blank")
+        return value
+
+    @model_validator(mode="after")
+    def require_staff_profile(self):
+        if self.role in STAFF_ROLES and (not self.subject_id or not self.full_name):
+            raise ValueError("Staff account requires subject_id and full_name")
+        return self
 
 
 class RegisterPatientRequest(BaseModel):
@@ -101,6 +123,19 @@ async def ensure_patient_link(account: dict, repository: IdentityRepository, reg
     linked = await repository.link_patient_profile(account["id"], profile_id)
     if linked is None:
         raise HTTPException(status_code=409, detail="Account could not be linked to patient profile")
+    return linked
+
+
+async def ensure_staff_link(account: dict, repository: IdentityRepository, registry: RegistryClient, details: dict) -> dict:
+    try:
+        staff_code = await registry.ensure_staff(account["id"], details)
+    except RegistryConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RegistryUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    linked = await repository.activate_staff_profile(account["id"], account["role"], staff_code)
+    if linked is None:
+        raise HTTPException(status_code=409, detail="Account could not be linked to staff profile")
     return linked
 
 
@@ -168,6 +203,19 @@ async def login(body: LoginRequest, repository: Repository, registry: Registry) 
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if account["role"] == "patient" and (account["registration_pending"] or not account["subject_id"]):
         account = await ensure_patient_link(account, repository, registry)
+    if account["role"] in STAFF_ROLES:
+        if account["registration_pending"] or not account["subject_id"]:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        try:
+            await registry.ensure_staff(account["id"], {
+                "staff_code": account["subject_id"], "role": account["role"],
+                "full_name": account["username"], "phone": None,
+                "specialty": None, "branch_code": None,
+            })
+        except RegistryConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RegistryUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
     if not account["is_active"]:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     await repository.clear_login_failures(account["id"])
@@ -210,7 +258,26 @@ async def logout_all(repository: Repository, account: CurrentAccount) -> None:
 
 
 @router.post("/accounts", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
-async def create_account(body: CreateAccountRequest, repository: Repository, _admin: AdminAccount) -> AccountResponse:
+async def create_account(body: CreateAccountRequest, repository: Repository, registry: Registry,
+                         _admin: AdminAccount) -> AccountResponse:
+    if body.role in STAFF_ROLES:
+        account = await repository.find_by_login(body.role, body.username)
+        if account is None:
+            try:
+                account = await repository.create_pending_staff(
+                    str(uuid4()), body.role, body.username, body.subject_id, hash_password(body.password)
+                )
+            except aiomysql.IntegrityError as exc:
+                raise HTTPException(status_code=409, detail="Account already exists") from exc
+        elif (not account["registration_pending"] or account["is_active"]
+              or account["subject_id"] != body.subject_id
+              or not verify_password(body.password, account["password_hash"])):
+            raise HTTPException(status_code=409, detail="Account already exists")
+        details = {
+            "staff_code": body.subject_id, "role": body.role, "full_name": body.full_name,
+            "phone": body.phone, "specialty": body.specialty, "branch_code": body.branch_code,
+        }
+        return AccountResponse.model_validate(await ensure_staff_link(account, repository, registry, details))
     try:
         account = await repository.create_account(
             str(uuid4()), body.role, body.username, body.subject_id, hash_password(body.password)
@@ -250,5 +317,8 @@ async def disable_account(account_id: str, repository: Repository, admin: AdminA
 
 @router.patch("/accounts/{account_id}/enable", status_code=status.HTTP_204_NO_CONTENT)
 async def enable_account(account_id: str, repository: Repository, _admin: AdminAccount) -> None:
+    account = await repository.find_by_id(account_id)
+    if account and account["registration_pending"]:
+        raise HTTPException(status_code=409, detail="Pending profile must be linked before enabling account")
     if not await repository.enable_account(account_id):
         raise HTTPException(status_code=404, detail="Account not found")
