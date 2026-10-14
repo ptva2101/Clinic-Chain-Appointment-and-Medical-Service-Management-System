@@ -33,7 +33,7 @@ Ví dụ body giữ chỗ:
 
 Mỗi tổ hợp cấu hình–ngày–ca có một hàng `slot_inventory` khóa bằng `SELECT ... FOR UPDATE`. Tạo, xác nhận, hết hạn và giải phóng hold được xử lý trong giao dịch MySQL dưới khóa này, vì vậy không thể vượt giới hạn khi nhiều người lấy chỗ cuối cùng cùng lúc. `idempotency_key` duy nhất trong phạm vi từng bệnh nhân; retry cùng nội dung trả cùng hold, còn đổi nội dung hoặc dùng lại key đã hết hiệu lực trả 409. Hold quá TTL không tính vào availability; lần ghi kế tiếp dọn trạng thái và bộ đếm. `GET availability` là thông tin tại thời điểm đọc, **không cam kết giữ chỗ**; chỉ `POST holds` mới cấp chỗ nguyên tử.
 
-API `confirm`/`release` dành cho Appointment service tương lai; chúng không tự tạo lịch hẹn. Trong giai đoạn này, chưa có luồng đặt lịch hoàn chỉnh hay xác minh bác sĩ đúng chuyên khoa dịch vụ. Không nên bật hủy/chuyển lịch trực đang có hold hoặc lịch hẹn trước khi phối hợp với Appointment/Billing. Mã nội bộ trong `.env.example` chỉ dành cho local; cần thay bằng secret riêng trước khi triển khai chung.
+API `confirm`/`release` nội bộ hiện được Appointment service dùng để xác nhận hoặc giải phóng slot; chúng không tự tạo lịch hẹn. Luồng đặt lịch mới đã có ở API Appointment nhưng frontend vẫn gọi backend cũ, và chưa có thanh toán/khám đầu-cuối. Không nên bật hủy/chuyển lịch trực đang có hold hoặc lịch hẹn trước khi phối hợp với Appointment/Billing. Mã nội bộ trong `.env.example` chỉ dành cho local; cần thay bằng secret riêng trước khi triển khai chung.
 
 Chạy local:
 

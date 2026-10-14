@@ -1,6 +1,6 @@
 # Nền tảng 7 service
 
-Đây là bộ khung cho quá trình tách backend hiện tại. Bảy service là bảy tiến trình FastAPI độc lập. **Identity đã có API đăng ký/đăng nhập; Registry đã có hồ sơ bệnh nhân/nhân viên và danh mục chi nhánh/dịch vụ lưu thật**. Các nghiệp vụ khác chưa chuyển từ `Backend/`. Giao diện dùng Identity và Registry cho tài khoản/hồ sơ/danh mục cơ bản; nhiều màn hình nghiệp vụ vẫn gọi backend cũ ở cổng 8000 hoặc còn dữ liệu mẫu. Đây chưa phải hệ thống đặt lịch hoàn chỉnh.
+Đây là nền tảng chuyển dần backend nguyên khối thành bảy tiến trình FastAPI độc lập. Identity có đăng ký/đăng nhập; Registry có hồ sơ và danh mục; Scheduling có lịch trực/slot/giữ chỗ; Appointment có API đặt/hủy lịch và điều phối với Scheduling. Billing, Clinical và Laboratory hiện chủ yếu là khung service và API đọc dữ liệu lịch sử. Frontend còn gọi `Backend/` cũ ở cổng 8000 cho nhiều màn hình nghiệp vụ, nên chưa có luồng khám bệnh trọn vẹn chỉ bằng Compose. Xem [hướng dẫn chạy từ đầu](../README.md).
 
 | Service | Cổng local | Database riêng | Dữ liệu sẽ sở hữu |
 | --- | ---: | --- | --- |
@@ -12,7 +12,7 @@
 | Clinical | 8006 | `clinical_db` | Lượt khám, chẩn đoán, đơn thuốc, điều trị |
 | Laboratory | 8007 | `laboratory_db` | Chỉ định xét nghiệm, kết quả |
 
-Scheduling đã có API xem/xếp ca trực bác sĩ lưu MySQL; xem [Scheduling service](scheduling-service.md). Slot giữ chỗ, đặt lịch và phối hợp hủy/chuyển ca với Appointment/Billing chưa hoàn tất.
+Scheduling đã có API lịch trực và giữ slot; Appointment đã có API đặt/hủy lịch phối hợp qua HTTP với Scheduling. Việc hủy/chuyển ca trực có lịch hẹn, thanh toán, khám và xét nghiệm đầu-cuối vẫn chưa hoàn tất. Xem [Scheduling](scheduling-service.md) và [Appointment](appointment-service.md).
 
 ## Chạy local
 
@@ -44,10 +44,8 @@ docker run --rm medicare-services-test
 
 ## Bước tiếp theo
 
-1. Hoàn thiện hồ sơ Registry và chốt OpenAPI nghiệp vụ còn thiếu cho từng service.
-2. Di chuyển tài khoản cũ vào Identity, ngừng lưu mật khẩu ở các bảng nghiệp vụ và chuyển frontend sang JWT. Xem [Identity service](identity-service.md).
-3. Tách Registry, Scheduling, Appointment, Billing, Clinical và Laboratory lần lượt, có kiểm thử hồi quy sau mỗi bước.
-4. Thêm API Gateway và orchestration đặt lịch; frontend chỉ gọi Gateway khi các API mới đã thay thế luồng cũ.
-5. Bổ sung metrics, SLA/QoS và kiểm thử tải k6.
+1. Chuyển các lời gọi frontend còn dùng `Backend/` sang API Appointment, Billing, Clinical và Laboratory mới; bảo vệ endpoint bằng Identity.
+2. Hoàn thiện thanh toán, check-in, khám và xét nghiệm cùng cơ chế bù trừ khi nhiều service phối hợp.
+3. Bổ sung metrics, SLA/QoS và kiểm thử tải cho luồng ghi; kịch bản k6 hiện có chỉ đo GET lịch trực Scheduling.
 
-Chỉ chuyển qua API/event giữa các service. Không truy vấn trực tiếp database của service khác. Backend cũ và file SQLite `Backend/hospital.db` không tham gia vào Compose này.
+Chỉ chuyển qua API/event giữa các service. Không truy vấn trực tiếp database của service khác. Backend cũ và file SQLite `Backend/hospital.db` không tham gia vào Compose này; dữ liệu MySQL Docker cũng không đi theo Git.
