@@ -26,9 +26,9 @@ Admin cấp tài khoản bác sĩ/lễ tân/xét nghiệm viên qua `POST /api/v
 | --- | --- | --- |
 | `PUT /api/v1/registry/internal/staff/{account_id}` | Service token Identity | Tạo hồ sơ nhân viên idempotent |
 | `GET /api/v1/registry/staff/me` | Bearer token Identity vai trò nhân viên | Xem hồ sơ của chính mình |
-| `GET /api/v1/registry/staff?q=&limit=20&offset=0` | Bearer token Identity vai trò `admin` | Danh sách hồ sơ nhân viên thật có tìm kiếm và phân trang |
+| `GET /api/v1/registry/staff?q=&limit=20&offset=0` | Bearer token Identity vai trò `admin` | Danh sách hồ sơ nhân viên đã liên kết và hồ sơ mẫu, có tìm kiếm và phân trang; trường `source` cho biết nguồn |
 
-Registry hỏi Identity `/me` để kiểm tra token và trạng thái tài khoản; truy vấn staff của chính mình luôn giới hạn bằng `identity_account_id` và `subject_id`. Frontend lấy hồ sơ này khi nhân viên đăng nhập để hiện họ tên, chuyên khoa và chi nhánh. Bảng nhân sự mẫu trong Admin đã được bỏ; danh sách hồ sơ nhân viên đọc từ Registry. Registry chưa có API cập nhật nhân viên hay API đặt lịch.
+Registry hỏi Identity `/me` để kiểm tra token và trạng thái tài khoản; truy vấn staff của chính mình luôn giới hạn bằng `identity_account_id` và `subject_id`. Frontend lấy hồ sơ này khi nhân viên đăng nhập để hiện họ tên, chuyên khoa và chi nhánh. Danh sách hồ sơ nhân viên đọc từ Registry. 27 hồ sơ seed cũ vẫn được đánh dấu `source=legacy_demo` để giữ nguồn gốc; công cụ kích hoạt local có thể tạo tài khoản Identity và điền `identity_account_id` cho chúng. Khi đã liên kết, hồ sơ đăng nhập được và được tính là nhân viên hoạt động. Đây vẫn là tên/số điện thoại mô phỏng, không phải nhân viên ngoài đời. Registry chưa có API cập nhật nhân viên hay API đặt lịch.
 
 ## Danh mục thật
 

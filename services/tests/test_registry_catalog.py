@@ -96,6 +96,8 @@ def test_catalog_starts_empty_and_writes_require_admin(client):
     config = {"MaCauHinh": "CH_HN_KHAM", "MaChiNhanh": "CN_HN", "MaDichVu": "DV_KHAM",
               "SlotGioiHan": 10, "TrangThai": "active"}
     assert client.put(f"{base}/branch-services/CH_HN_KHAM", json=config, headers=admin).status_code == 200
+    assert client.get(f"{base}/branch-services/CH_HN_KHAM").json() == config
+    assert client.get(f"{base}/branch-services/UNKNOWN").status_code == 404
     assert client.patch(f"{base}/branch-services/CH_HN_KHAM",
                         json={"TrangThai": "inactive"}, headers=admin).json()["TrangThai"] == "inactive"
     assert client.get(f"{base}/branch-services").json()[0]["SlotGioiHan"] == 10

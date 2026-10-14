@@ -3,10 +3,15 @@ import { LogOut } from 'lucide-react'
 import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
 import { getTodayDateKey } from '../shared/dates.js'
 import { checkIn, getCheckinAppointments, getWaitingList, searchCheckinAppointment } from '../api/appointment.js'
+import TablePagination from './TablePagination.jsx'
+import { getCurrentPage, getPageRows, TABLE_PAGE_SIZE } from './tablePagination.js'
 
 export default function ReceptionistDashboard({ user, onLogout, showNotification, catalogData = EMPTY_CATALOG_DATA }) {
   const TODAY = getTodayDateKey()
   const [activeQueueTab, setActiveQueueTab] = useState('prebooked')
+  const [prebookedPage, setPrebookedPage] = useState(0)
+  const [queueGroupPage, setQueueGroupPage] = useState(0)
+  const [queuePagesByDoctor, setQueuePagesByDoctor] = useState({})
   const [searchTerm, setSearchTerm] = useState('')
   const [feedback, setFeedback] = useState('')
   const [checkinRows, setCheckinRows] = useState([])
@@ -953,6 +958,7 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
         )}
 
         {activeQueueTab === 'prebooked' ? (
+          <>
           <div className="reception-table-wrap">
             <table className="reception-table">
               <thead>
@@ -967,12 +973,12 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
                 </tr>
               </thead>
               <tbody>
-                {waitingReceptionBookings.map((booking, index) => {
+                {getPageRows(waitingReceptionBookings, prebookedPage).map((booking, index) => {
                   const patient = getPatient(booking.MaBenhAn)
                   const service = getService(booking.MaDichVu)
                   return (
                     <tr key={booking.MaLichHen}>
-                      <td>{index + 1}</td>
+                      <td>{getCurrentPage(prebookedPage, waitingReceptionBookings.length) * TABLE_PAGE_SIZE + index + 1}</td>
                       <td>{patient.MaBenhAn}</td>
                       <td>{patient.HoTen}</td>
                       <td>{patient.SDT}</td>
@@ -1001,9 +1007,12 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
               </tbody>
             </table>
           </div>
+          <TablePagination page={prebookedPage} total={waitingReceptionBookings.length} label="lịch chờ tiếp đón" onPageChange={setPrebookedPage} />
+          </>
         ) : queueGroups.length > 0 ? (
+          <>
           <div className="reception-doctor-queue-grid">
-            {queueGroups.map((group) => (
+            {getPageRows(queueGroups, queueGroupPage).map((group) => (
               <article key={group.doctor.MaBacSi} className="reception-doctor-queue-card">
                 <header>
                   <div>
@@ -1026,12 +1035,12 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
                       </tr>
                     </thead>
                     <tbody>
-                      {group.items.map((booking, index) => {
+                      {getPageRows(group.items, queuePagesByDoctor[group.doctor.MaBacSi] || 0).map((booking, index) => {
                         const patient = getPatient(booking.MaBenhAn)
                         const service = getService(booking.MaDichVu)
                         return (
                           <tr key={booking.MaLichHen}>
-                            <td>{index + 1}</td>
+                            <td>{getCurrentPage(queuePagesByDoctor[group.doctor.MaBacSi] || 0, group.items.length) * TABLE_PAGE_SIZE + index + 1}</td>
                             <td>{patient.HoTen}</td>
                             <td>Ca {booking.CaKham}</td>
                             <td>{booking.TenDichVu || service.TenDichVu}</td>
@@ -1044,9 +1053,12 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
                     </tbody>
                   </table>
                 </div>
+                <TablePagination page={queuePagesByDoctor[group.doctor.MaBacSi] || 0} total={group.items.length} label="bệnh nhân" onPageChange={(page) => setQueuePagesByDoctor((current) => ({ ...current, [group.doctor.MaBacSi]: page }))} />
               </article>
             ))}
           </div>
+          <TablePagination page={queueGroupPage} total={queueGroups.length} label="bác sĩ" onPageChange={setQueueGroupPage} />
+          </>
         ) : (
           <div className="reception-empty-state">Chưa có bệnh nhân nào trong hàng đợi khám.</div>
         )}

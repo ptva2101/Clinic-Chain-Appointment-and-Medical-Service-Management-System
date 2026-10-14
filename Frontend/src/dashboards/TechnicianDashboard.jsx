@@ -2,9 +2,13 @@ import { useEffect, useState } from 'react'
 import { LogOut } from 'lucide-react'
 import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
 import { acceptTest, getTests, updateResult } from '../api/laboratory.js'
+import TablePagination from './TablePagination.jsx'
+import { getPageRows } from './tablePagination.js'
 
 export default function TechnicianDashboard({ user, onLogout, onChangePassword, showNotification, catalogData = EMPTY_CATALOG_DATA }) {
   const [activeTab, setActiveTab] = useState('pending')
+  const [pendingPage, setPendingPage] = useState(0)
+  const [completedPage, setCompletedPage] = useState(0)
   const [paymentModal, setPaymentModal] = useState(null)
   const [resultModal, setResultModal] = useState(null)
   const [resultText, setResultText] = useState('')
@@ -555,8 +559,8 @@ export default function TechnicianDashboard({ user, onLogout, onChangePassword, 
 
   const handleChangePassword = async (event) => {
     event.preventDefault()
-    if (passwordForm.newPassword.length < 12) {
-      notify('Mật khẩu mới phải có ít nhất 12 ký tự.', 'error')
+    if (passwordForm.newPassword.length < 6) {
+      notify('Mật khẩu mới phải có ít nhất 6 ký tự.', 'error')
       return
     }
 
@@ -627,6 +631,7 @@ export default function TechnicianDashboard({ user, onLogout, onChangePassword, 
         </div>
 
         {activeTab === 'pending' ? (
+          <>
           <div className="technician-table-wrap">
             <table className="technician-table">
               <thead>
@@ -642,7 +647,7 @@ export default function TechnicianDashboard({ user, onLogout, onChangePassword, 
                 </tr>
               </thead>
               <tbody>
-                {pendingRows.map((row) => (
+                {getPageRows(pendingRows, pendingPage).map((row) => (
                   <tr key={row.lab.MaChiTietXN}>
                     <td>
                       <strong>{row.lab.MaLuotKham}</strong>
@@ -700,7 +705,10 @@ export default function TechnicianDashboard({ user, onLogout, onChangePassword, 
               </tbody>
             </table>
           </div>
+          <TablePagination page={pendingPage} total={pendingRows.length} label="chỉ định" onPageChange={setPendingPage} />
+          </>
         ) : activeTab === 'completed' ? (
+          <>
           <div className="technician-table-wrap">
             <table className="technician-table technician-result-table">
               <thead>
@@ -713,7 +721,7 @@ export default function TechnicianDashboard({ user, onLogout, onChangePassword, 
                 </tr>
               </thead>
               <tbody>
-                {completedRows.map((row) => (
+                {getPageRows(completedRows, completedPage).map((row) => (
                   <tr key={row.lab.MaChiTietXN}>
                     <td>
                       <strong>{row.lab.MaLuotKham}</strong>
@@ -747,6 +755,8 @@ export default function TechnicianDashboard({ user, onLogout, onChangePassword, 
               </tbody>
             </table>
           </div>
+          <TablePagination page={completedPage} total={completedRows.length} label="kết quả" onPageChange={setCompletedPage} />
+          </>
         ) : (
           <div className="technician-account-panel">
             <section className="technician-profile-summary">

@@ -3,6 +3,7 @@ import os
 from fastapi.middleware.cors import CORSMiddleware
 
 from common.app import create_app
+from common.history import history_router
 from registry.api import router
 from registry.catalog import router as catalog_router
 
@@ -31,3 +32,4 @@ async def prevent_patient_profile_caching(request, call_next):
 
 app.include_router(router)
 app.include_router(catalog_router)
+app.include_router(history_router("registry"))

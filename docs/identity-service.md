@@ -27,17 +27,17 @@ Identity tự khởi tạo/nâng cấp schema trước khi mở API, kể cả v
 | `POST /api/v1/identity/change-password` | Bearer token | Đổi mật khẩu; vô hiệu hóa mọi phiên cũ |
 | `GET /api/v1/identity/accounts` | Admin | Liệt kê tài khoản có phân trang/lọc vai trò, không lộ mật khẩu |
 | `POST /api/v1/identity/accounts` | Admin | Tạo tài khoản; với nhân viên, tạo hồ sơ Registry rồi mới kích hoạt |
-| `POST /api/v1/identity/accounts/{id}/reset-password` | Admin | Đặt lại mật khẩu, vô hiệu hóa mọi phiên cũ |
+| `POST /api/v1/identity/accounts/{id}/reset-password` | Admin | Không có body; đặt mật khẩu về `123456`, vô hiệu hóa mọi phiên cũ |
 | `PATCH /api/v1/identity/accounts/{id}/disable` | Admin | Vô hiệu hóa tài khoản và mọi phiên |
 | `PATCH /api/v1/identity/accounts/{id}/enable` | Admin | Kích hoạt lại tài khoản |
 
-Vai trò: `admin`, `patient`, `doctor`, `letan`, `xnv`. Mật khẩu mới tối thiểu 12 ký tự. Sau 5 lần đăng nhập sai, tài khoản bị khóa 15 phút; thông báo đăng nhập vẫn chung để tránh lộ trạng thái tài khoản. CORS mặc định chỉ cho phép `localhost:5173` và `127.0.0.1:5173`, có thể cấu hình bằng `IDENTITY_CORS_ORIGINS`.
+Vai trò: `admin`, `patient`, `doctor`, `letan`, `xnv`. Mật khẩu mới tối thiểu 6 ký tự (chính sách phục vụ môi trường local; triển khai thật nên dùng mật khẩu mạnh hơn và không dùng mật khẩu chung). Sau 5 lần đăng nhập sai, tài khoản bị khóa 15 phút; thông báo đăng nhập vẫn chung để tránh lộ trạng thái tài khoản. CORS mặc định chỉ cho phép `localhost:5173` và `127.0.0.1:5173`, có thể cấu hình bằng `IDENTITY_CORS_ORIGINS`.
 
 Đăng ký công khai **chỉ tạo vai trò `patient`**; client không thể gửi `role=admin` hay vai trò nhân viên. Ví dụ tạo tài khoản mới rồi đăng nhập:
 
 ```powershell
 $base = 'http://127.0.0.1:8001/api/v1/identity'
-$newAccount = @{ username = '001095012345'; password = '<mật khẩu mới từ 12 ký tự>' } | ConvertTo-Json
+$newAccount = @{ username = '001095012345'; password = '<mật khẩu mới từ 6 ký tự>' } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri "$base/register" -ContentType 'application/json' -Body $newAccount
 $login = @{ role = 'patient'; username = '001095012345'; password = '<cùng mật khẩu>' } | ConvertTo-Json
 $tokens = Invoke-RestMethod -Method Post -Uri "$base/login" -ContentType 'application/json' -Body $login
@@ -45,7 +45,9 @@ $tokens = Invoke-RestMethod -Method Post -Uri "$base/login" -ContentType 'applic
 
 Identity chỉ lưu thông tin xác thực. Khi đăng ký, Identity gọi API nội bộ của Registry để tạo hồ sơ bệnh nhân tối thiểu (CCCD), rồi lưu mã hồ sơ vào `accounts.subject_id`. Registry sở hữu bảng `patients`; hai service không truy cập database của nhau. Nếu Registry tạm lỗi, tài khoản ở trạng thái chờ và chưa đăng nhập được; gửi lại đăng ký với cùng CCCD/mật khẩu sẽ hoàn tất liên kết mà không tạo hồ sơ trùng. Tài khoản Identity bệnh nhân cũ có `subject_id` trống được bổ sung hồ sơ khi đăng nhập hợp lệ. Họ tên, ngày sinh, BHYT... chưa được thu thập/chuyển sang Registry trong luồng này; không coi hồ sơ tối thiểu là hồ sơ khám bệnh hoàn chỉnh.
 
-Frontend dùng một giao diện tại `http://localhost:5173/`: tab “Đăng ký” chỉ tạo bệnh nhân và hồ sơ Registry; tab “Đăng nhập” gọi Identity cho mọi vai trò. Admin đăng nhập bằng tài khoản bootstrap trong `.env`, sau đó vào mục quản lý nhân sự để cấp tài khoản Identity cho bác sĩ, lễ tân và xét nghiệm viên (mã đăng nhập, mã nhân sự, họ tên, mật khẩu tối thiểu 12 ký tự). Registry tạo hồ sơ nhân viên trước khi Identity kích hoạt tài khoản. Tài khoản nhân viên cũ không tự chuyển sang Identity. Chạy frontend:
+Frontend dùng một giao diện tại `http://localhost:5173/`: tab “Đăng ký” chỉ tạo bệnh nhân và hồ sơ Registry; tab “Đăng nhập” gọi Identity cho mọi vai trò. Admin đăng nhập bằng tài khoản bootstrap trong `.env`, sau đó vào mục quản lý nhân sự để cấp tài khoản Identity cho bác sĩ, lễ tân và xét nghiệm viên (mã đăng nhập, mã nhân sự, họ tên, mật khẩu tối thiểu 6 ký tự). Registry tạo hồ sơ nhân viên trước khi Identity kích hoạt tài khoản. 27 hồ sơ nhân viên mẫu cũ chỉ được cấp tài khoản khi chạy công cụ local opt-in dưới đây. Chạy frontend:
+
+Trong mục Nhân sự, bảng tài khoản hiển thị cả admin, bệnh nhân và nhân viên. Admin có thể tìm theo mã đăng nhập/mã hồ sơ, bấm biểu tượng chìa khóa rồi xác nhận để đặt mật khẩu của tài khoản về `123456`; không cần nhập mật khẩu mới. API chỉ chấp nhận token Admin; thao tác thu hồi phiên đăng nhập nhưng không mở khóa tài khoản đang bị vô hiệu hóa. Nếu reset chính tài khoản admin đang dùng, giao diện đăng xuất để đăng nhập lại. Mật khẩu mặc định này chỉ phù hợp với môi trường local/demo; người dùng phải đổi ngay sau khi nhận tài khoản, không dùng mật khẩu chung khi triển khai thật.
 
 ```powershell
 cd Frontend

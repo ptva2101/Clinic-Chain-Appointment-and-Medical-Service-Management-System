@@ -3,6 +3,8 @@ import { LogOut } from 'lucide-react'
 import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
 import { getDoctorQueue, updateAppointmentStatus } from '../api/appointment.js'
 import { completeAppointment, completeTreatmentSession, getCompletedEncounters, getDoctorPatientHistory, getEncounterDetail } from '../api/clinical.js'
+import TablePagination from './TablePagination.jsx'
+import { getPageRows } from './tablePagination.js'
 
 export default function DoctorDashboard({ user, onLogout, onChangePassword, showNotification, scheduleAdjustments = [], catalogData = EMPTY_CATALOG_DATA }) {
   const [doctorProfile, setDoctorProfile] = useState({
@@ -30,6 +32,9 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
   const [savingExam, setSavingExam] = useState(false)
   const [selectedVisitId, setSelectedVisitId] = useState('')
   const [historyDetail, setHistoryDetail] = useState(null)
+  const [queuePage, setQueuePage] = useState(0)
+  const [conclusionPage, setConclusionPage] = useState(0)
+  const [historyPage, setHistoryPage] = useState(0)
   const [clinicalForm, setClinicalForm] = useState({
     TrieuChung: '',
     MaBenh: '',
@@ -713,8 +718,8 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
 
   const handleChangePassword = async (event) => {
     event.preventDefault()
-    if (passwordForm.newPassword.length < 12 || passwordForm.newPassword !== passwordForm.confirmPassword) {
-      notify('Mật khẩu mới cần ít nhất 12 ký tự và phải khớp xác nhận.', 'error')
+    if (passwordForm.newPassword.length < 6 || passwordForm.newPassword !== passwordForm.confirmPassword) {
+      notify('Mật khẩu mới cần ít nhất 6 ký tự và phải khớp xác nhận.', 'error')
       return
     }
     try {
@@ -1299,7 +1304,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
                 </tr>
               </thead>
               <tbody>
-                {doctorQueue.map((booking) => {
+                {getPageRows(doctorQueue, queuePage).map((booking) => {
                   const patient = getPatient(booking.MaBenhAn)
                   const service = getService(booking.MaDichVu)
                   return (
@@ -1335,6 +1340,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
               </tbody>
             </table>
           </div>
+          <TablePagination page={queuePage} total={doctorQueue.length} label="ca chờ" onPageChange={setQueuePage} />
         </article>
       </section>
 
@@ -1359,7 +1365,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
               </tr>
             </thead>
             <tbody>
-              {waitingConclusionBookings.map((booking) => {
+              {getPageRows(waitingConclusionBookings, conclusionPage).map((booking) => {
                 const patient = getPatient(booking.MaBenhAn)
                 const currentLabs = labDetails.filter((lab) => lab.MaLuotKham === buildCurrentVisitId(booking))
                 const readyCount = currentLabs.filter((lab) => lab.TrangThaiXetNghiem === 'Đã có kết quả').length
@@ -1398,6 +1404,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
             </tbody>
           </table>
         </div>
+        <TablePagination page={conclusionPage} total={waitingConclusionBookings.length} label="ca chờ kết luận" onPageChange={setConclusionPage} />
       </section>
 
       <section className="doctor-card">
@@ -1917,7 +1924,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
                 </tr>
               </thead>
               <tbody>
-                {completedEncounterRows.map((row) => (
+                {getPageRows(completedEncounterRows, historyPage).map((row) => (
                   <tr
                     key={row.visit.MaLuotKham}
                     className="doctor-clickable-row"
@@ -1946,6 +1953,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
               </tbody>
             </table>
           </div>
+          <TablePagination page={historyPage} total={completedEncounterRows.length} label="lượt khám" onPageChange={setHistoryPage} />
         </section>
       ) : (
         <section className="doctor-card">

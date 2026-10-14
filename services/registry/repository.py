@@ -129,7 +129,7 @@ class RegistryRepository:
             try:
                 async with connection.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT staff_code, identity_account_id, role, full_name, phone, specialty, branch_code "
+                        "SELECT staff_code, identity_account_id, role, full_name, phone, specialty, branch_code, source "
                         "FROM staff_profiles WHERE identity_account_id = %s",
                         (account_id,),
                     )
@@ -144,7 +144,7 @@ class RegistryRepository:
                             )
                             await connection.commit()
                             await cursor.execute(
-                                "SELECT staff_code, identity_account_id, role, full_name, phone, specialty, branch_code "
+                                "SELECT staff_code, identity_account_id, role, full_name, phone, specialty, branch_code, source "
                                 "FROM staff_profiles WHERE identity_account_id = %s",
                                 (account_id,),
                             )
@@ -152,7 +152,7 @@ class RegistryRepository:
                         except aiomysql.IntegrityError:
                             await connection.rollback()
                             await cursor.execute(
-                                "SELECT staff_code, identity_account_id, role, full_name, phone, specialty, branch_code "
+                                "SELECT staff_code, identity_account_id, role, full_name, phone, specialty, branch_code, source "
                                 "FROM staff_profiles WHERE identity_account_id = %s OR staff_code = %s LIMIT 1",
                                 (account_id, details["staff_code"]),
                             )
@@ -172,7 +172,7 @@ class RegistryRepository:
         async with pool.acquire() as connection:
             async with connection.cursor() as cursor:
                 await cursor.execute(
-                    "SELECT staff_code, identity_account_id, role, full_name, phone, specialty, branch_code "
+                    "SELECT staff_code, identity_account_id, role, full_name, phone, specialty, branch_code, source "
                     "FROM staff_profiles WHERE identity_account_id = %s AND staff_code = %s",
                     (account_id, staff_code),
                 )
@@ -185,7 +185,7 @@ class RegistryRepository:
         async with pool.acquire() as connection:
             async with connection.cursor() as cursor:
                 await cursor.execute(
-                    "SELECT staff_code, identity_account_id, role, full_name, phone, specialty, branch_code "
+                    "SELECT staff_code, identity_account_id, role, full_name, phone, specialty, branch_code, source "
                     "FROM staff_profiles WHERE staff_code = %s",
                     (staff_code,),
                 )
@@ -206,7 +206,7 @@ class RegistryRepository:
                 await cursor.execute(f"SELECT COUNT(*) AS total FROM staff_profiles{where}", params)
                 total = (await cursor.fetchone())["total"]
                 await cursor.execute(
-                    "SELECT staff_code, identity_account_id, role, full_name, phone, specialty, branch_code "
+                    "SELECT staff_code, identity_account_id, role, full_name, phone, specialty, branch_code, source "
                     f"FROM staff_profiles{where} ORDER BY created_at DESC, staff_code DESC LIMIT %s OFFSET %s",
                     (*params, limit, offset),
                 )

@@ -10,13 +10,15 @@ import { createBranch, createService as createRegistryService, saveBranchService
 import { listStaffProfiles } from '../api/staffProfile.js'
 import { cancelDoctorSchedules, createDoctorSchedules, listDoctorSchedules, transferDoctorSchedules } from '../api/scheduling.js'
 import IdentityStaffAccounts from './IdentityStaffAccounts.jsx'
+import TablePagination from './TablePagination.jsx'
+import { getCurrentPage, getPageRows, TABLE_PAGE_SIZE } from './tablePagination.js'
 
-const PATIENT_PAGE_SIZE = 20
 const STAFF_ROLE_NAMES = { doctor: 'Bác sĩ', letan: 'Lễ tân', xnv: 'Xét nghiệm viên' }
 
 export default function AdminDashboard({
   user,
   onLogout,
+  identityAccountId,
   identityAccessToken,
   showNotification,
   addPatientNotifications,
@@ -45,6 +47,8 @@ export default function AdminDashboard({
   const [patientError, setPatientError] = useState('')
   const [patientReload, setPatientReload] = useState(0)
   const [serviceSearch, setServiceSearch] = useState('')
+  const [servicePage, setServicePage] = useState(0)
+  const [branchPage, setBranchPage] = useState(0)
   const [newServiceForm, setNewServiceForm] = useState({
     MaDichVu: '',
     TenDichVu: '',
@@ -62,6 +66,7 @@ export default function AdminDashboard({
     MaChiNhanh: 'all',
     LoaiDichVu: 'all',
   })
+  const [branchServicePage, setBranchServicePage] = useState(0)
   const [slotDrafts, setSlotDrafts] = useState(() =>
     Object.fromEntries(
       [
@@ -263,6 +268,7 @@ export default function AdminDashboard({
     DenNgay: nextWeekFilter.toISOString().slice(0, 10),
     MaBacSi: 'all',
   })
+  const [schedulePage, setSchedulePage] = useState(0)
   const [doctorTransferModal, setDoctorTransferModal] = useState({
     show: false,
     schedule: null,
@@ -274,6 +280,9 @@ export default function AdminDashboard({
     showNotification?.(message, type)
   }
   const [reportMonth, setReportMonth] = useState('2026-06')
+  const [reportBranchPage, setReportBranchPage] = useState(0)
+  const [reportDoctorPage, setReportDoctorPage] = useState(0)
+  const [reportServicePage, setReportServicePage] = useState(0)
   const [adminReportData, setAdminReportData] = useState(null)
   const [adminReportLoading, setAdminReportLoading] = useState(false)
   const [adminReportError, setAdminReportError] = useState('')
@@ -384,8 +393,8 @@ export default function AdminDashboard({
       try {
         const result = await listPatients(identityAccessToken, {
           search: patientSearch,
-          limit: PATIENT_PAGE_SIZE,
-          offset: patientPage * PATIENT_PAGE_SIZE,
+          limit: TABLE_PAGE_SIZE,
+          offset: patientPage * TABLE_PAGE_SIZE,
         })
         if (active) {
           setPatients(result.items)
@@ -965,6 +974,7 @@ export default function AdminDashboard({
 
   const handleScheduleFilterChange = (field, value) => {
     setScheduleFilters((current) => ({ ...current, [field]: value }))
+    setSchedulePage(0)
   }
 
   const getScheduleSelectionKey = (thu, ca) => `${thu}-${ca}`
@@ -1305,7 +1315,7 @@ export default function AdminDashboard({
 
   const renderStaffManagement = () => (
     <div className="admin-stack">
-      <IdentityStaffAccounts accessToken={identityAccessToken} showNotification={showNotification} onChanged={() => setStaffReload((value) => value + 1)} />
+      <IdentityStaffAccounts accessToken={identityAccessToken} currentAccountId={identityAccountId} onOwnPasswordReset={onLogout} showNotification={showNotification} onChanged={() => setStaffReload((value) => value + 1)} />
       {staffLoadError && <p role="alert" className="admin-feedback">{staffLoadError}</p>}
       <section className="admin-card">
         <div className="admin-section-header">
@@ -1357,15 +1367,7 @@ export default function AdminDashboard({
             </tbody>
           </table>
         </div>
-        {!patientError && patientTotal > 0 && (
-          <div className="admin-patient-pagination">
-            <span>Hiển thị {patientPage * PATIENT_PAGE_SIZE + 1}–{Math.min((patientPage + 1) * PATIENT_PAGE_SIZE, patientTotal)} / {patientTotal} bệnh nhân</span>
-            <div className="admin-actions-row">
-              <button type="button" className="admin-secondary-button" disabled={patientLoading || patientPage === 0} onClick={() => { setPatientLoading(true); setPatientPage((page) => page - 1) }}>Trang trước</button>
-              <button type="button" className="admin-secondary-button" disabled={patientLoading || (patientPage + 1) * PATIENT_PAGE_SIZE >= patientTotal} onClick={() => { setPatientLoading(true); setPatientPage((page) => page + 1) }}>Trang sau</button>
-            </div>
-          </div>
-        )}
+        {!patientError && <TablePagination page={patientPage} total={patientTotal} label="bệnh nhân" disabled={patientLoading} onPageChange={(page) => { setPatientLoading(true); setPatientPage(page) }} />}
       </section>
     </div>
   )
@@ -1447,7 +1449,7 @@ export default function AdminDashboard({
           <input
             className="admin-input"
             value={serviceSearch}
-            onChange={(event) => setServiceSearch(event.target.value)}
+            onChange={(event) => { setServiceSearch(event.target.value); setServicePage(0) }}
             placeholder="Tìm theo mã, tên, loại dịch vụ hoặc chuyên khoa"
           />
         </label>
@@ -1465,7 +1467,7 @@ export default function AdminDashboard({
               </tr>
             </thead>
             <tbody>
-              {filteredServices.map((service) => (
+              {getPageRows(filteredServices, servicePage).map((service) => (
                 <tr key={service.MaDichVu}>
                   <td>{service.MaDichVu}</td>
                   <td>{service.TenDichVu}</td>
@@ -1507,6 +1509,7 @@ export default function AdminDashboard({
             </tbody>
           </table>
         </div>
+        <TablePagination page={servicePage} total={filteredServices.length} label="dịch vụ" onPageChange={setServicePage} />
       </section>
 
       <section className="admin-card">
@@ -1559,7 +1562,7 @@ export default function AdminDashboard({
         </form>
 
         <div className="admin-branch-grid">
-          {branches.map((branch) => (
+          {getPageRows(branches, branchPage).map((branch) => (
             <div className="admin-branch-card" key={branch.MaChiNhanh}>
               <strong>{branch.MaChiNhanh}</strong>
               <span>{branch.TenChiNhanh}</span>
@@ -1568,6 +1571,7 @@ export default function AdminDashboard({
             </div>
           ))}
         </div>
+        <TablePagination page={branchPage} total={branches.length} label="chi nhánh" onPageChange={setBranchPage} />
       </section>
 
       <section className="admin-card">
@@ -1630,9 +1634,10 @@ export default function AdminDashboard({
             <select
               className="admin-input"
               value={serviceFilters.MaChiNhanh}
-              onChange={(event) =>
+              onChange={(event) => {
                 setServiceFilters((current) => ({ ...current, MaChiNhanh: event.target.value }))
-              }
+                setBranchServicePage(0)
+              }}
             >
               <option value="all">Tất cả</option>
               {branches.map((branch) => (
@@ -1647,9 +1652,10 @@ export default function AdminDashboard({
             <select
               className="admin-input"
               value={serviceFilters.LoaiDichVu}
-              onChange={(event) =>
+              onChange={(event) => {
                 setServiceFilters((current) => ({ ...current, LoaiDichVu: event.target.value }))
-              }
+                setBranchServicePage(0)
+              }}
             >
               <option value="all">Tất cả</option>
               <option value="Khám lâm sàng">Khám lâm sàng</option>
@@ -1673,7 +1679,7 @@ export default function AdminDashboard({
               </tr>
             </thead>
             <tbody>
-              {filteredBranchServices.map((config) => {
+              {getPageRows(filteredBranchServices, branchServicePage).map((config) => {
                 const service = getService(config.MaDichVu)
                 return (
                   <tr key={config.MaCauHinh}>
@@ -1733,6 +1739,7 @@ export default function AdminDashboard({
             </tbody>
           </table>
         </div>
+        <TablePagination page={branchServicePage} total={filteredBranchServices.length} label="cấu hình dịch vụ" onPageChange={setBranchServicePage} />
       </section>
     </div>
   )
@@ -1882,7 +1889,7 @@ export default function AdminDashboard({
               </tr>
             </thead>
             <tbody>
-              {filteredDoctorSchedules.map((schedule) => {
+              {getPageRows(filteredDoctorSchedules, schedulePage).map((schedule) => {
                 const isCancelled = schedule.TrangThai === 'Đã hủy'
                 return (
                   <tr key={schedule.id ? `schedule-${schedule.id}` : `${schedule.MaLichTruc}-${schedule.MaBacSi}-${schedule.MaChiNhanh}-${schedule.NgayTruc}-${schedule.CaTruc}`}>
@@ -1908,6 +1915,7 @@ export default function AdminDashboard({
             </tbody>
           </table>
         </div>
+        <TablePagination page={schedulePage} total={filteredDoctorSchedules.length} label="lịch trực" onPageChange={setSchedulePage} />
       </section>
 
       {doctorTransferModal.show && (
@@ -1990,7 +1998,12 @@ export default function AdminDashboard({
             className="admin-input"
             type="month"
             value={reportMonth}
-            onChange={(event) => setReportMonth(event.target.value || '2026-06')}
+            onChange={(event) => {
+              setReportMonth(event.target.value || '2026-06')
+              setReportBranchPage(0)
+              setReportDoctorPage(0)
+              setReportServicePage(0)
+            }}
           />
         </label>
       </section>
@@ -2035,7 +2048,7 @@ export default function AdminDashboard({
               </tr>
             </thead>
             <tbody>
-              {displayReportData.branchRows.map((row) => (
+              {getPageRows(displayReportData.branchRows, reportBranchPage).map((row) => (
                 <tr key={row.maChiNhanh}>
                   <td>{row.tenChiNhanh}</td>
                   <td>{row.completedCount}</td>
@@ -2046,6 +2059,7 @@ export default function AdminDashboard({
             </tbody>
           </table>
         </div>
+        <TablePagination page={reportBranchPage} total={displayReportData.branchRows.length} label="chi nhánh" onPageChange={setReportBranchPage} />
       </section>
 
       <section className="admin-card">
@@ -2061,9 +2075,9 @@ export default function AdminDashboard({
               </tr>
             </thead>
             <tbody>
-              {displayReportData.doctorRows.map((item, index) => (
+              {getPageRows(displayReportData.doctorRows, reportDoctorPage).map((item, index) => (
                 <tr key={item.key}>
-                  <td>#{index + 1}</td>
+                  <td>#{getCurrentPage(reportDoctorPage, displayReportData.doctorRows.length) * TABLE_PAGE_SIZE + index + 1}</td>
                   <td>{item.hoTen}</td>
                   <td>{item.chuyenKhoa}</td>
                   <td>{item.count}</td>
@@ -2077,6 +2091,7 @@ export default function AdminDashboard({
             </tbody>
           </table>
         </div>
+        <TablePagination page={reportDoctorPage} total={displayReportData.doctorRows.length} label="bác sĩ" onPageChange={setReportDoctorPage} />
       </section>
 
       <section className="admin-card">
@@ -2093,7 +2108,7 @@ export default function AdminDashboard({
                 </tr>
               </thead>
               <tbody>
-                {displayReportData.serviceContributionRows.map((item) => (
+                {getPageRows(displayReportData.serviceContributionRows, reportServicePage).map((item) => (
                   <tr key={item.key}>
                     <td>{item.loaiDichVu}</td>
                     <td>{item.tenDichVu}</td>
@@ -2109,6 +2124,7 @@ export default function AdminDashboard({
               </tbody>
             </table>
           </div>
+          <TablePagination page={reportServicePage} total={displayReportData.serviceContributionRows.length} label="dịch vụ" onPageChange={setReportServicePage} />
         </div>
       </section>
     </div>

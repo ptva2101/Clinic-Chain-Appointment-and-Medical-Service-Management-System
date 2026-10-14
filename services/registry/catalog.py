@@ -217,6 +217,18 @@ async def list_branch_services(repository: Repository) -> list[BranchService]:
     return [BranchService.model_validate(row) for row in rows]
 
 
+@router.get("/branch-services/{code}", response_model=BranchService)
+async def get_branch_service(code: str, repository: Repository) -> BranchService:
+    row = await repository.one(
+        "SELECT code AS MaCauHinh, branch_code AS MaChiNhanh, service_code AS MaDichVu, "
+        "slot_limit AS SlotGioiHan, IF(active, 'active', 'inactive') AS TrangThai "
+        "FROM branch_services WHERE code = %s", (code,),
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Branch/service configuration not found")
+    return BranchService.model_validate(row)
+
+
 @router.put("/branch-services/{code}", response_model=BranchService)
 async def put_branch_service(code: str, body: BranchService, repository: Repository,
                              _admin: Admin) -> BranchService:

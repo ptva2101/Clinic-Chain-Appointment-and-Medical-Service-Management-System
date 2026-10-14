@@ -85,18 +85,24 @@ services:
       IDENTITY_INTERNAL_URL: http://identity:8000
       REGISTRY_INTERNAL_URL: http://registry:8000
       SCHEDULING_CORS_ORIGINS: ${SCHEDULING_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      SCHEDULING_INTERNAL_TOKEN: ${SCHEDULING_INTERNAL_TOKEN:-replace_this_scheduling_internal_token_before_deployment}
+      SCHEDULING_HOLD_TTL_SECONDS: ${SCHEDULING_HOLD_TTL_SECONDS:-600}
     ports:
       - "127.0.0.1:8003:8000"
 
   appointment:
     <<: *api-base
-    command: ["uvicorn", "appointment.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["sh", "-c", "python -m appointment.migrate && exec uvicorn appointment.main:app --host 0.0.0.0 --port 8000"]
     environment:
       DB_HOST: mysql
       DB_PORT: "3306"
       DB_NAME: appointment_db
       DB_USER: appointment_app
       DB_PASSWORD: dev_only_appointment
+      IDENTITY_INTERNAL_URL: http://identity:8000
+      SCHEDULING_INTERNAL_URL: http://scheduling:8000
+      SCHEDULING_INTERNAL_TOKEN: ${SCHEDULING_INTERNAL_TOKEN:-replace_this_scheduling_internal_token_before_deployment}
+      APPOINTMENT_CORS_ORIGINS: ${APPOINTMENT_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     ports:
       - "127.0.0.1:8004:8000"
 
@@ -109,6 +115,7 @@ services:
       DB_NAME: billing_db
       DB_USER: billing_app
       DB_PASSWORD: dev_only_billing
+      IDENTITY_INTERNAL_URL: http://identity:8000
     ports:
       - "127.0.0.1:8005:8000"
 
@@ -121,6 +128,7 @@ services:
       DB_NAME: clinical_db
       DB_USER: clinical_app
       DB_PASSWORD: dev_only_clinical
+      IDENTITY_INTERNAL_URL: http://identity:8000
     ports:
       - "127.0.0.1:8006:8000"
 
@@ -133,6 +141,7 @@ services:
       DB_NAME: laboratory_db
       DB_USER: laboratory_app
       DB_PASSWORD: dev_only_laboratory
+      IDENTITY_INTERNAL_URL: http://identity:8000
     ports:
       - "127.0.0.1:8007:8000"
 

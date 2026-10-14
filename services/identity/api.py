@@ -25,6 +25,7 @@ from identity.security import (
 
 Role = Literal["admin", "patient", "doctor", "letan", "xnv"]
 STAFF_ROLES = {"doctor", "letan", "xnv"}
+DEFAULT_RESET_PASSWORD = "123456"  # Local/demo only; do not use a shared password in production.
 router = APIRouter(prefix="/api/v1/identity", tags=["Identity"])
 bearer = HTTPBearer(auto_error=False)
 
@@ -59,7 +60,7 @@ class CreateAccountRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     role: Role
     username: str = Field(min_length=1, max_length=128)
-    password: str = Field(min_length=12, max_length=256)
+    password: str = Field(min_length=6, max_length=256)
     subject_id: str | None = Field(default=None, min_length=1, max_length=128)
     full_name: str | None = Field(default=None, min_length=1, max_length=160)
     phone: str | None = Field(default=None, pattern=r"^\+?[0-9]{9,15}$")
@@ -87,16 +88,12 @@ class RegisterPatientRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     username: str = Field(pattern=r"^[0-9]{12}$", description="12-digit CCCD used as login name")
-    password: str = Field(min_length=12, max_length=256)
+    password: str = Field(min_length=6, max_length=256)
 
 
 class ChangePasswordRequest(BaseModel):
     old_password: str = Field(min_length=1, max_length=256)
-    new_password: str = Field(min_length=12, max_length=256)
-
-
-class ResetPasswordRequest(BaseModel):
-    new_password: str = Field(min_length=12, max_length=256)
+    new_password: str = Field(min_length=6, max_length=256)
 
 
 def get_repository(request: Request) -> IdentityRepository:
@@ -301,9 +298,9 @@ async def list_accounts(
 
 @router.post("/accounts/{account_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT)
 async def reset_password(
-    account_id: str, body: ResetPasswordRequest, repository: Repository, _admin: AdminAccount
+    account_id: str, repository: Repository, _admin: AdminAccount
 ) -> None:
-    if not await repository.set_password(account_id, hash_password(body.new_password)):
+    if not await repository.set_password(account_id, hash_password(DEFAULT_RESET_PASSWORD)):
         raise HTTPException(status_code=404, detail="Account not found")
 
 

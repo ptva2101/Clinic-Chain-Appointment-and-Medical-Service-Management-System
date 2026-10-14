@@ -5,10 +5,13 @@ import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
 import { NotificationBell } from '../shared/Widgets.jsx'
 import { bookAndPay, bookTreatment, getPatientAppointments, getPatientNotifications } from '../api/appointment.js'
 import { getPatientMedicalHistory } from '../api/clinical.js'
+import TablePagination from './TablePagination.jsx'
+import { getPageRows } from './tablePagination.js'
 
 export default function PatientDashboard({
   user,
   onLogout,
+  onChangePassword,
   onUpdateUser,
   showNotification,
   notifications = [],
@@ -108,7 +111,6 @@ export default function PatientDashboard({
 	    CCCD: user?.CCCD || user?.id || '001095012345',
 	    MaSoBHYT: user?.MaSoBHYT || 'DN4010123456789',
 	    KyTuDauBHYT: user?.KyTuDauBHYT || 'DN',
-	    MatKhau: user?.MatKhau || '123456',
 	  }
 	  const [patient, setPatient] = useState(initialPatientProfile)
 	  const [, setPatientDirectory] = useState([initialPatientProfile])
@@ -392,6 +394,8 @@ export default function PatientDashboard({
 	  const [medicalHistoryLoading, setMedicalHistoryLoading] = useState(false)
 	  const [medicalHistoryError, setMedicalHistoryError] = useState('')
 	  const [appointmentSearch, setAppointmentSearch] = useState('')
+	  const [appointmentPage, setAppointmentPage] = useState(0)
+	  const [medicalHistoryPage, setMedicalHistoryPage] = useState(0)
 	  const [isEditingContact, setIsEditingContact] = useState(false)
 	  const [contactForm, setContactForm] = useState({
 	    SDT: initialPatientProfile.SDT,
@@ -1185,29 +1189,17 @@ export default function PatientDashboard({
 	    setShowPasswordForm(false)
 	  }
 
-	  const handleConfirmPasswordChange = () => {
-	    if (passwordForm.currentPassword !== patient.MatKhau) {
-	      showNotification?.('Mật khẩu hiện tại không chính xác.', 'error')
+	  const handleConfirmPasswordChange = async () => {
+	    if (passwordForm.newPassword.length < 6 || passwordForm.newPassword !== passwordForm.confirmPassword) {
+	      showNotification?.('Mật khẩu mới cần ít nhất 6 ký tự và phải khớp xác nhận.', 'error')
 	      return
 	    }
-
-	    if (!passwordForm.newPassword || passwordForm.newPassword !== passwordForm.confirmPassword) {
-	      showNotification?.('Mật khẩu mới và xác nhận mật khẩu không khớp.', 'error')
-	      return
+	    try {
+	      await onChangePassword(passwordForm.currentPassword, passwordForm.newPassword)
+	      handleCancelPasswordChange()
+	    } catch (error) {
+	      showNotification?.(error instanceof Error ? error.message : 'Không đổi được mật khẩu.', 'error')
 	    }
-
-	    const nextPatient = {
-	      ...patient,
-	      MatKhau: passwordForm.newPassword,
-	    }
-
-	    setPatient(nextPatient)
-	    setPatientDirectory((current) =>
-	      current.map((item) => (item.MaBenhAn === nextPatient.MaBenhAn ? nextPatient : item)),
-	    )
-	    onUpdateUser?.({ MatKhau: passwordForm.newPassword })
-	    handleCancelPasswordChange()
-	    showNotification?.('Đổi mật khẩu thành công!')
 	  }
 
 	  const handleTreatmentDraftChange = (maLichTrinh, field, value) => {
@@ -1876,7 +1868,7 @@ export default function PatientDashboard({
 	        <input
 	          type="search"
 	          value={appointmentSearch}
-	          onChange={(event) => setAppointmentSearch(event.target.value)}
+	          onChange={(event) => { setAppointmentSearch(event.target.value); setAppointmentPage(0) }}
 	          placeholder="Tìm kiếm theo mã lịch hẹn, dịch vụ, chi nhánh, ngày, trạng thái..."
 	        />
 	        <span>{filteredBookings.length} lịch hẹn</span>
@@ -1898,7 +1890,7 @@ export default function PatientDashboard({
 	            </tr>
 	          </thead>
 	          <tbody>
-	            {filteredBookings.map((booking) => (
+	            {getPageRows(filteredBookings, appointmentPage).map((booking) => (
 	              <tr key={booking.MaLichHen}>
 	                <td>{booking.MaLichHen}</td>
 	                <td>{getService(booking.MaDichVu).TenDichVu}</td>
@@ -1920,6 +1912,7 @@ export default function PatientDashboard({
 	          </tbody>
 	        </table>
 	      </div>
+	      <TablePagination page={appointmentPage} total={filteredBookings.length} label="lịch hẹn" onPageChange={setAppointmentPage} />
 	    </div>
   )
 
@@ -2094,7 +2087,7 @@ export default function PatientDashboard({
 
         <div className="health-record-layout">
           <aside className="health-timeline">
-            {completedVisits.map((visit) => {
+            {getPageRows(completedVisits, medicalHistoryPage).map((visit) => {
               const visitDisease = getDiseaseInfo(visit.MaBenh, visit.TenBenh)
               const visitDoctor = getDoctorInfoFromBooking(visit.booking)
               return (
@@ -2113,6 +2106,10 @@ export default function PatientDashboard({
                 </button>
               )
             })}
+            <TablePagination page={medicalHistoryPage} total={completedVisits.length} label="lượt khám" onPageChange={(page) => {
+              setMedicalHistoryPage(page)
+              setSelectedVisitId(getPageRows(completedVisits, page)[0]?.MaLuotKham || '')
+            }} />
           </aside>
 
           <div className="health-detail">

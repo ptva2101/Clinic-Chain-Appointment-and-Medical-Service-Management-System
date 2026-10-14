@@ -75,10 +75,10 @@ def get_registry_client() -> RegistryClient:
     return RegistryClient()
 
 
-async def admin_token(
+async def authenticated_account(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
     identity: Annotated[IdentityClient, Depends(get_identity_client)],
-) -> str:
+) -> dict:
     if credentials is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     try:
@@ -89,9 +89,24 @@ async def admin_token(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     if not account.get("is_active"):
         raise HTTPException(status_code=401, detail="Invalid access token")
+    return account
+
+
+async def admin_token(
+    account: Annotated[dict, Depends(authenticated_account)],
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)],
+) -> str:
     if account.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin role required")
     return credentials.credentials
+
+
+async def patient_account(account: Annotated[dict, Depends(authenticated_account)]) -> dict:
+    if account.get("role") != "patient":
+        raise HTTPException(status_code=403, detail="Patient role required")
+    if not account.get("subject_id"):
+        raise HTTPException(status_code=409, detail="Patient profile is not linked")
+    return account
 
 
 Repository = Annotated[SchedulingRepository, Depends(get_repository)]

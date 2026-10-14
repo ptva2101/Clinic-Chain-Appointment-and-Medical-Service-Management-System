@@ -17,6 +17,18 @@ async def migrate() -> None:
                     for statement in schema.split(";"):
                         if statement.strip():
                             await cursor.execute(statement)
+                    await cursor.execute("SHOW COLUMNS FROM staff_profiles LIKE 'identity_account_id'")
+                    identity_column = await cursor.fetchone()
+                    if identity_column["Null"] == "NO":
+                        await cursor.execute(
+                            "ALTER TABLE staff_profiles MODIFY identity_account_id CHAR(36) NULL"
+                        )
+                    await cursor.execute("SHOW COLUMNS FROM staff_profiles LIKE 'source'")
+                    if await cursor.fetchone() is None:
+                        await cursor.execute(
+                            "ALTER TABLE staff_profiles ADD COLUMN source VARCHAR(32) "
+                            "NOT NULL DEFAULT 'identity'"
+                        )
                 await connection.commit()
             except Exception:
                 await connection.rollback()

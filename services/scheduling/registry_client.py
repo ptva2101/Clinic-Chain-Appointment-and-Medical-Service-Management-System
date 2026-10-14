@@ -15,6 +15,31 @@ class InvalidScheduleReference(Exception):
 
 
 class RegistryClient:
+    async def booking_config(self, code: str) -> dict:
+        base = os.getenv("REGISTRY_INTERNAL_URL", "http://registry:8000").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    f"{base}/api/v1/registry/catalog/branch-services/{quote(code, safe='')}"
+                )
+        except httpx.RequestError as exc:
+            raise RegistryUnavailable("Registry service is unavailable") from exc
+        if response.status_code == 404:
+            raise InvalidScheduleReference("Branch/service configuration not found")
+        if response.status_code != 200:
+            raise RegistryUnavailable("Registry catalogue is unavailable")
+        try:
+            config = response.json()
+            if (not isinstance(config, dict) or config.get("MaCauHinh") != code
+                    or type(config.get("SlotGioiHan")) is not int
+                    or config["SlotGioiHan"] < 0
+                    or not config.get("MaChiNhanh") or not config.get("MaDichVu")
+                    or config.get("TrangThai") not in ("active", "inactive")):
+                raise ValueError("Invalid configuration")
+            return config
+        except (ValueError, TypeError) as exc:
+            raise RegistryUnavailable("Registry returned an invalid booking configuration") from exc
+
     async def verify_references(self, token: str, doctor_codes: set[str],
                                 branch_codes: set[str]) -> None:
         base = os.getenv("REGISTRY_INTERNAL_URL", "http://registry:8000").rstrip("/")

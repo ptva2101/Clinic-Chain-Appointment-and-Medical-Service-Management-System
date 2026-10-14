@@ -805,6 +805,54 @@
   gap: 8px;
 }
 
+.admin-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: #334155;
+  cursor: pointer;
+}
+
+.admin-icon-action:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.admin-icon-action:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.admin-icon-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-icon-action-danger {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.admin-icon-action-danger:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.admin-icon-action-success {
+  color: #15803d;
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.admin-icon-action-success:hover:not(:disabled) {
+  background: #dcfce7;
+}
+
 .schedule-matrix-wrap {
   width: 100%;
   overflow-x: auto;
@@ -1167,6 +1215,11 @@
 .admin-transfer-modal h2 {
   margin: 6px 0 18px;
   color: #0f172a;
+}
+
+.admin-password-reset-form {
+  display: grid;
+  gap: 14px;
 }
 
 .admin-modal-close {

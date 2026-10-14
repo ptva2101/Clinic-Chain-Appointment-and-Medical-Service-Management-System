@@ -232,10 +232,10 @@ export default function App() {
           showNotification(error instanceof Error ? error.message : 'Không thể tải danh mục Registry.', 'error')
         })
       }
-      showNotification('Đăng nhập Identity thành công.')
+      showNotification('Đăng nhập thành công.')
     } catch (error) {
       if (issued?.refresh_token) await logoutAccount(issued.refresh_token).catch(() => {})
-      showNotification(error instanceof Error ? error.message : 'Không kết nối được Identity service.', 'error')
+      showNotification(error instanceof Error ? error.message : 'Không kết nối được dịch vụ đăng nhập.', 'error')
     } finally {
       setAuthBusy(false)
     }
@@ -249,8 +249,8 @@ export default function App() {
       showNotification('CCCD phải gồm đúng 12 chữ số.', 'error')
       return
     }
-    if (matKhauDangKy.length < 12) {
-      showNotification('Mật khẩu phải có ít nhất 12 ký tự.', 'error')
+    if (matKhauDangKy.length < 6) {
+      showNotification('Mật khẩu phải có ít nhất 6 ký tự.', 'error')
       return
     }
     if (matKhauDangKy !== xacNhanMatKhauDangKy) {
@@ -269,7 +269,7 @@ export default function App() {
       window.history.replaceState({}, '', '/')
       showNotification('Đã tạo tài khoản và hồ sơ Registry. Mời bạn đăng nhập.')
     } catch (error) {
-      showNotification(error instanceof Error ? error.message : 'Không kết nối được Identity service.', 'error')
+      showNotification(error instanceof Error ? error.message : 'Không kết nối được dịch vụ đăng nhập.', 'error')
     } finally {
       setAuthBusy(false)
     }
@@ -315,6 +315,7 @@ export default function App() {
 	      <AdminDashboard
 	        user={currentUser}
 	        onLogout={handleIdentityLogout}
+	        identityAccountId={identityAccount?.id}
 	        identityAccessToken={identityTokens?.access_token}
 	        showNotification={showNotification}
 	        addPatientNotifications={addPatientNotifications}
@@ -361,6 +362,7 @@ export default function App() {
 	      <PatientDashboard
 	        user={currentUser}
 	        onLogout={handleIdentityLogout}
+	        onChangePassword={handleChangeIdentityPassword}
 	        onUpdateUser={handleUpdateCurrentUser}
 	        showNotification={showNotification}
 	        notifications={notifications}
@@ -459,7 +461,7 @@ export default function App() {
                   onChange={setCccdDangKy}
                 />
                 <InputField
-                  label="Mật khẩu (ít nhất 12 ký tự)"
+                  label="Mật khẩu (ít nhất 6 ký tự)"
                   placeholder="Tạo mật khẩu"
                   icon={Lock}
                   type="password"

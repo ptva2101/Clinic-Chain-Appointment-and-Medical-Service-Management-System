@@ -18,8 +18,8 @@ async def reset_identity() -> None:
     signing_secret()
     username = os.environ["IDENTITY_ADMIN_USERNAME"]
     password = os.environ["IDENTITY_ADMIN_PASSWORD"]
-    if len(password) < 12:
-        raise RuntimeError("IDENTITY_ADMIN_PASSWORD must have at least 12 characters")
+    if len(password) < 6:
+        raise RuntimeError("IDENTITY_ADMIN_PASSWORD must have at least 6 characters")
 
     database = MySQLDatabase()
     try:

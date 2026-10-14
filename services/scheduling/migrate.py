@@ -17,6 +17,17 @@ async def migrate() -> None:
                     for statement in statements:
                         if statement.strip():
                             await cursor.execute(statement)
+                    await cursor.execute(
+                        "SELECT CHARACTER_MAXIMUM_LENGTH AS max_length "
+                        "FROM INFORMATION_SCHEMA.COLUMNS "
+                        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'slot_holds' "
+                        "AND COLUMN_NAME = 'patient_id'"
+                    )
+                    patient_column = await cursor.fetchone()
+                    if patient_column and patient_column["max_length"] < 128:
+                        await cursor.execute(
+                            "ALTER TABLE slot_holds MODIFY COLUMN patient_id VARCHAR(128) NOT NULL"
+                        )
                 await connection.commit()
             except Exception:
                 await connection.rollback()

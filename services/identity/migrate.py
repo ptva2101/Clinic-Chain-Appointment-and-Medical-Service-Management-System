@@ -46,8 +46,8 @@ async def migrate() -> None:
                         await cursor.execute(f"ALTER TABLE accounts ADD COLUMN {column} {definition}")
                 username = os.environ["IDENTITY_ADMIN_USERNAME"]
                 password = os.environ["IDENTITY_ADMIN_PASSWORD"]
-                if len(password) < 12:
-                    raise RuntimeError("IDENTITY_ADMIN_PASSWORD must have at least 12 characters")
+                if len(password) < 6:
+                    raise RuntimeError("IDENTITY_ADMIN_PASSWORD must have at least 6 characters")
                 await cursor.execute("SELECT id FROM accounts WHERE role = 'admin' LIMIT 1")
                 if await cursor.fetchone() is None:
                     await cursor.execute(

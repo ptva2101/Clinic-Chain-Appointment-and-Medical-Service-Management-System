@@ -62,12 +62,13 @@ class EnsureStaffRequest(BaseModel):
 
 class StaffResponse(BaseModel):
     staff_code: str
-    identity_account_id: str
+    identity_account_id: str | None
     role: StaffRole
     full_name: str
     phone: str | None
     specialty: str | None
     branch_code: str | None
+    source: Literal["identity", "legacy_demo"] = "identity"
 
 
 class StaffListResponse(BaseModel):

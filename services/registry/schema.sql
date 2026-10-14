@@ -13,12 +13,13 @@ CREATE TABLE IF NOT EXISTS patients (
 
 CREATE TABLE IF NOT EXISTS staff_profiles (
     staff_code VARCHAR(128) PRIMARY KEY,
-    identity_account_id CHAR(36) NOT NULL,
+    identity_account_id CHAR(36) NULL,
     role VARCHAR(16) NOT NULL,
     full_name VARCHAR(160) NOT NULL,
     phone VARCHAR(20) NULL,
     specialty VARCHAR(160) NULL,
     branch_code VARCHAR(32) NULL,
+    source VARCHAR(32) NOT NULL DEFAULT 'identity',
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     UNIQUE KEY uq_staff_identity (identity_account_id)

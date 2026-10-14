@@ -97,6 +97,7 @@ def client(monkeypatch):
     try:
         with TestClient(app) as test_client:
             test_client.identity = identity
+            test_client.repository = repository
             yield test_client
     finally:
         app.dependency_overrides.clear()
@@ -279,3 +280,23 @@ def test_staff_directory_requires_admin_and_reads_registry_profiles(client):
     assert client.get(by_code, headers={"Authorization": "Bearer admin-token"}).json()["role"] == "doctor"
     assert client.get("/api/v1/registry/staff/by-code/UNKNOWN",
                       headers={"Authorization": "Bearer admin-token"}).status_code == 404
+
+
+def test_unlinked_demo_staff_is_visible_to_admin_but_has_no_owner(client):
+    client.repository.staff["demo:BS001"] = {
+        "staff_code": "BS001", "identity_account_id": None, "role": "doctor",
+        "full_name": "Nguyễn Văn An", "phone": "0911222333",
+        "specialty": "Nội tổng quát", "branch_code": None, "source": "legacy_demo",
+    }
+    client.identity.accounts["admin-token"] = {
+        "id": str(uuid4()), "role": "admin", "subject_id": None, "is_active": True,
+    }
+    client.identity.accounts["doctor-token"] = {
+        "id": str(uuid4()), "role": "doctor", "subject_id": "BS001", "is_active": True,
+    }
+    result = client.get("/api/v1/registry/staff", headers={"Authorization": "Bearer admin-token"})
+    assert result.status_code == 200
+    assert result.json()["items"][0]["source"] == "legacy_demo"
+    assert result.json()["items"][0]["identity_account_id"] is None
+    assert client.get("/api/v1/registry/staff/me",
+                      headers={"Authorization": "Bearer doctor-token"}).status_code == 404

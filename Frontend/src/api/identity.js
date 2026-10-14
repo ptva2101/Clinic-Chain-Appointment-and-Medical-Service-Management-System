@@ -57,7 +57,16 @@ export function changeAccountPassword(accessToken, oldPassword, newPassword) {
 }
 
 export function listAccounts(accessToken, role, offset = 0) {
-  return request(`/accounts?role=${encodeURIComponent(role)}&limit=100&offset=${offset}`, {
+  const params = new URLSearchParams({ limit: '100', offset: String(offset) })
+  if (role) params.set('role', role)
+  return request(`/accounts?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
+
+export function resetAccountPassword(accessToken, accountId) {
+  return request(`/accounts/${encodeURIComponent(accountId)}/reset-password`, {
+    method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 }

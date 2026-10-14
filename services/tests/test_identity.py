@@ -291,6 +291,7 @@ def test_openapi_exposes_identity_contract(client):
                  "/api/v1/identity/me", "/api/v1/identity/accounts", "/api/v1/identity/change-password",
                  "/api/v1/identity/logout-all", "/api/v1/identity/accounts/{account_id}/reset-password"):
         assert path in schema["paths"]
+    assert "requestBody" not in schema["paths"]["/api/v1/identity/accounts/{account_id}/reset-password"]["post"]
 
 
 def test_patient_can_register_then_login_without_creating_staff_account(client):
@@ -370,6 +371,38 @@ def test_change_password_invalidates_existing_tokens(client):
     assert login(client, password="DifferentPass123!").status_code == 200
 
 
+def test_six_character_password_policy_for_registration_staff_and_change(client):
+    register = "/api/v1/identity/register"
+    assert client.post(register, json={"username": "001095011111", "password": "12345"}).status_code == 422
+    assert client.post(register, json={"username": "001095011111", "password": "abcdef"}).status_code == 201
+    assert login(client, "patient", "001095011111", "abcdef").status_code == 200
+
+    admin_token = login(client).json()["access_token"]
+    admin_auth = {"Authorization": f"Bearer {admin_token}"}
+    staff_body = {
+        "role": "doctor", "username": "BS906", "subject_id": "BS906",
+        "full_name": "Bác sĩ thử nghiệm", "password": "123456",
+    }
+    assert client.post("/api/v1/identity/accounts", headers=admin_auth,
+                       json={**staff_body, "password": "12345"}).status_code == 422
+    staff = client.post("/api/v1/identity/accounts", headers=admin_auth, json=staff_body)
+    assert staff.status_code == 201
+    token = login(client, "doctor", "BS906", "123456").json()["access_token"]
+    assert client.post("/api/v1/identity/change-password",
+                       headers={"Authorization": f"Bearer {token}"},
+                       json={"old_password": "123456", "new_password": "abcdef"}).status_code == 204
+    assert login(client, "doctor", "BS906", "123456").status_code == 401
+    changed_token = login(client, "doctor", "BS906", "abcdef").json()["access_token"]
+    patient_token = login(client, "patient", "001095011111", "abcdef").json()["access_token"]
+    reset_route = f"/api/v1/identity/accounts/{staff.json()['id']}/reset-password"
+    assert client.post(reset_route, headers={"Authorization": f"Bearer {patient_token}"}).status_code == 403
+    assert client.post(reset_route, headers=admin_auth).status_code == 204
+    assert client.get("/api/v1/identity/me",
+                      headers={"Authorization": f"Bearer {changed_token}"}).status_code == 401
+    assert login(client, "doctor", "BS906", "abcdef").status_code == 401
+    assert login(client, "doctor", "BS906", "123456").status_code == 200
+
+
 def test_lockout_and_admin_reset(client):
     repository = app.dependency_overrides[get_repository]()
     repository.accounts["admin-2"] = {
@@ -383,10 +416,20 @@ def test_lockout_and_admin_reset(client):
     assert login(client).status_code == 401
     backup = login(client, username="backup-admin", password="BackupAdmin123!").json()
     reset = client.post("/api/v1/identity/accounts/admin-1/reset-password",
-                        headers={"Authorization": f"Bearer {backup['access_token']}"},
-                        json={"new_password": "ResetPassword123!"})
+                        headers={"Authorization": f"Bearer {backup['access_token']}"})
     assert reset.status_code == 204
-    assert login(client, password="ResetPassword123!").status_code == 200
+    assert login(client, password="123456").status_code == 200
+
+
+def test_admin_can_reset_own_password_but_old_session_expires(client):
+    tokens = login(client).json()
+    auth = {"Authorization": f"Bearer {tokens['access_token']}"}
+    response = client.post("/api/v1/identity/accounts/admin-1/reset-password",
+                           headers=auth)
+    assert response.status_code == 204
+    assert client.get("/api/v1/identity/me", headers=auth).status_code == 401
+    assert login(client).status_code == 401
+    assert login(client, password="123456").status_code == 200
 
 
 def test_logout_all_enable_and_admin_account_listing(client):
