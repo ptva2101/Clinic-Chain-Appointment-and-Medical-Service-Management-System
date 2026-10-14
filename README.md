@@ -8,6 +8,8 @@ Cần Git, Docker Desktop đang chạy và Node.js phù hợp với Vite (`20.19
 
 Nếu cần **đúng dữ liệu trên máy xuất**, nhận file dump qua kênh riêng và làm theo [hướng dẫn import MySQL](data/mysql/README.md) **trước khi chạy toàn bộ service**. File dump không có trong repo public.
 
+Thành viên mới có thể làm lần lượt theo [hướng dẫn clone, import dữ liệu và chạy toàn hệ thống](docs/team-setup.md).
+
 ```powershell
 git clone https://github.com/ptva2101/Clinic-Chain-Appointment-and-Medical-Service-Management-System.git
 cd Clinic-Chain-Appointment-and-Medical-Service-Management-System

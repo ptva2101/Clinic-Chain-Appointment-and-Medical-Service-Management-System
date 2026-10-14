@@ -1,6 +1,6 @@
 # Bản sao MySQL của nhóm
 
-`medicare-7db-2026-10-14.sql.gz` là bản export **đầy đủ dữ liệu hiện có** trên máy xuất vào ngày 14/10/2026. File chứa cả bảng, bản ghi và lịch sử của bảy database: `identity_db`, `registry_db`, `scheduling_db`, `appointment_db`, `billing_db`, `clinical_db`, `laboratory_db`. Đây là bản chụp tại một thời điểm; dữ liệu mới phát sinh sau đó trên từng máy sẽ không tự đồng bộ qua Git. **File dump không có trong repo public**; nhận file qua kênh riêng từ người quản lý nhóm.
+`medicare-7db-2026-10-14.sql.gz` là bản export **đầy đủ dữ liệu hiện có** trên máy xuất vào ngày 14/10/2026. File chứa cả bảng, bản ghi và lịch sử của bảy database: `identity_db`, `registry_db`, `scheduling_db`, `appointment_db`, `billing_db`, `clinical_db`, `laboratory_db`. Đây là bản chụp tại một thời điểm; dữ liệu mới phát sinh sau đó trên từng máy sẽ không tự đồng bộ qua Git. **File dump không có trong repo public**; nhận file qua kênh riêng từ người quản lý nhóm. Thành viên mới nên bắt đầu bằng [hướng dẫn chạy từ đầu](../../docs/team-setup.md).
 
 **Lưu ý bảo mật:** bản sao có thể chứa CCCD, số điện thoại, hồ sơ khám, mã băm mật khẩu và thông tin phiên đăng nhập. Chỉ gửi file cho thành viên được phép sử dụng dữ liệu này; không phát hành bản dump ra công khai. Tài khoản có trong dump sẽ dùng mật khẩu đã đặt lúc export; `.env` không thể tự đổi mật khẩu của tài khoản đã tồn tại. Không dùng bộ dữ liệu này trong môi trường production.
 
@@ -12,7 +12,7 @@ Chỉ thực hiện khi MySQL volume của dự án trên máy đó **chưa có 
 
 ```powershell
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
-docker compose up -d mysql
+docker compose up -d --wait mysql
 docker compose cp data/mysql/medicare-7db-2026-10-14.sql.gz mysql:/tmp/medicare-7db-2026-10-14.sql.gz
 docker compose exec -T mysql sh -c 'gzip -t /tmp/medicare-7db-2026-10-14.sql.gz && gzip -dc /tmp/medicare-7db-2026-10-14.sql.gz | MYSQL_PWD=$MYSQL_ROOT_PASSWORD mysql -uroot'
 docker compose up -d --build
