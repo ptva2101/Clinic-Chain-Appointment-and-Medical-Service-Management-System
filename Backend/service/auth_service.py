@@ -5,6 +5,13 @@ from entities.benh_nhan import BenhNhan
 from entities.le_tan import LeTan
 from entities.xet_nghiem import XetNghiemVien
 
+
+LOCKED_STAFF_STATUS = "Đã khóa"
+
+
+def is_locked_account(row) -> bool:
+    return (row.get("TrangThai") or "Đang hoạt động") == LOCKED_STAFF_STATUS
+
 async def login_doctor(
     MaBacSi: str,
     password: str
@@ -16,7 +23,7 @@ async def login_doctor(
 
         cursor = await conn.execute("""
             SELECT *
-            FROM BAC_SI
+            FROM bac_si
             WHERE MaBacSi = %s
         """, (MaBacSi,))
 
@@ -26,6 +33,13 @@ async def login_doctor(
             return {
                 "success": False,
                 "message": "Tài khoản hoặc mật khẩu sai.",
+                "data": None
+            }
+
+        if is_locked_account(row):
+            return {
+                "success": False,
+                "message": "Tài khoản đã bị khóa. Vui lòng liên hệ Admin.",
                 "data": None
             }
 
@@ -49,6 +63,7 @@ async def login_doctor(
                 "SDT": bacsi.SDT,
                 "MaChiNhanh": None,
                 "MatKhau": bacsi.MatKhau,
+                "TrangThai": bacsi.TrangThai,
             }
         }
 
@@ -63,7 +78,7 @@ async def login_patient(cccd: str, password: str):
 
         cursor = await conn.execute("""
             SELECT *
-            FROM BENH_NHAN
+            FROM benh_nhan
             WHERE CCCD = %s
         """, (cccd,))
 
@@ -118,7 +133,7 @@ async def login_le_tan(
 
         cursor = await conn.execute("""
             SELECT *
-            FROM LE_TAN
+            FROM le_tan
             WHERE MaLeTan = %s
         """, (MaLeTan,))
 
@@ -128,6 +143,13 @@ async def login_le_tan(
             return {
                 "success": False,
                 "message": "Tài khoản hoặc mật khẩu sai.",
+                "data": None
+            }
+
+        if is_locked_account(row):
+            return {
+                "success": False,
+                "message": "Tài khoản đã bị khóa. Vui lòng liên hệ Admin.",
                 "data": None
             }
 
@@ -150,6 +172,7 @@ async def login_le_tan(
                 "SDT": letan.SDT,
                 "MatKhau": letan.MatKhau,
                 "MaChiNhanh": letan.MaChiNhanh,
+                "TrangThai": letan.TrangThai,
             }
         }
 
@@ -168,7 +191,7 @@ async def login_xet_nghiemVien(
 
         cursor = await conn.execute("""
             SELECT *
-            FROM XET_NGHIEM_VIEN
+            FROM xet_nghiem_vien
             WHERE MaXNV = %s
         """, (MaXetNghiemVien,))
 
@@ -178,6 +201,13 @@ async def login_xet_nghiemVien(
             return {
                 "success": False,
                 "message": "Tài khoản hoặc mật khẩu sai.",
+                "data": None
+            }
+
+        if is_locked_account(row):
+            return {
+                "success": False,
+                "message": "Tài khoản đã bị khóa. Vui lòng liên hệ Admin.",
                 "data": None
             }
 
@@ -200,6 +230,7 @@ async def login_xet_nghiemVien(
                 "SDT": xnv.SDT,
                 "MatKhau": xnv.MatKhau,
                 "MaChiNhanh": xnv.MaChiNhanh,
+                "TrangThai": xnv.TrangThai,
             }
         }
 
@@ -250,7 +281,7 @@ async def get_session_user(role: str, user_id: str):
         if normalized_role == "patient":
             cursor = await conn.execute("""
                 SELECT *
-                FROM BENH_NHAN
+                FROM benh_nhan
                 WHERE MaBenhAn = %s OR CCCD = %s
                 LIMIT 1
             """, (normalized_user_id, normalized_user_id))
@@ -285,7 +316,7 @@ async def get_session_user(role: str, user_id: str):
         if normalized_role == "doctor":
             cursor = await conn.execute("""
                 SELECT *
-                FROM BAC_SI
+                FROM bac_si
                 WHERE MaBacSi = %s
                 LIMIT 1
             """, (normalized_user_id,))
@@ -295,6 +326,13 @@ async def get_session_user(role: str, user_id: str):
                 return {
                     "success": False,
                     "message": "Không tìm thấy tài khoản bác sĩ.",
+                    "data": None,
+                }
+
+            if is_locked_account(row):
+                return {
+                    "success": False,
+                    "message": "Tài khoản bác sĩ đã bị khóa.",
                     "data": None,
                 }
 
@@ -310,13 +348,14 @@ async def get_session_user(role: str, user_id: str):
                     "SDT": bacsi.SDT,
                     "MaChiNhanh": None,
                     "MatKhau": bacsi.MatKhau,
+                    "TrangThai": bacsi.TrangThai,
                 },
             }
 
         if normalized_role == "letan":
             cursor = await conn.execute("""
                 SELECT *
-                FROM LE_TAN
+                FROM le_tan
                 WHERE MaLeTan = %s
                 LIMIT 1
             """, (normalized_user_id,))
@@ -326,6 +365,13 @@ async def get_session_user(role: str, user_id: str):
                 return {
                     "success": False,
                     "message": "Không tìm thấy tài khoản lễ tân.",
+                    "data": None,
+                }
+
+            if is_locked_account(row):
+                return {
+                    "success": False,
+                    "message": "Tài khoản lễ tân đã bị khóa.",
                     "data": None,
                 }
 
@@ -340,13 +386,14 @@ async def get_session_user(role: str, user_id: str):
                     "SDT": letan.SDT,
                     "MatKhau": letan.MatKhau,
                     "MaChiNhanh": letan.MaChiNhanh,
+                    "TrangThai": letan.TrangThai,
                 },
             }
 
         if normalized_role == "xnv":
             cursor = await conn.execute("""
                 SELECT *
-                FROM XET_NGHIEM_VIEN
+                FROM xet_nghiem_vien
                 WHERE MaXNV = %s
                 LIMIT 1
             """, (normalized_user_id,))
@@ -356,6 +403,13 @@ async def get_session_user(role: str, user_id: str):
                 return {
                     "success": False,
                     "message": "Không tìm thấy tài khoản xét nghiệm viên.",
+                    "data": None,
+                }
+
+            if is_locked_account(row):
+                return {
+                    "success": False,
+                    "message": "Tài khoản xét nghiệm viên đã bị khóa.",
                     "data": None,
                 }
 
@@ -370,6 +424,7 @@ async def get_session_user(role: str, user_id: str):
                     "SDT": xnv.SDT,
                     "MatKhau": xnv.MatKhau,
                     "MaChiNhanh": xnv.MaChiNhanh,
+                    "TrangThai": xnv.TrangThai,
                 },
             }
 
@@ -419,7 +474,7 @@ async def create_doctor_account(
 
         cursor = await conn.execute("""
             SELECT *
-            FROM BAC_SI
+            FROM bac_si
             WHERE MaBacSi = %s
         """, (MaBacSi,))
 
@@ -433,7 +488,7 @@ async def create_doctor_account(
             }
 
         await conn.execute("""
-            INSERT INTO BAC_SI (
+            INSERT INTO bac_si (
                 MaBacSi,
                 HoTen,
                 ChuyenKhoa,
@@ -482,7 +537,7 @@ async def delete_doctor_account(
 
         cursor = await conn.execute("""
             SELECT *
-            FROM BAC_SI
+            FROM bac_si
             WHERE MaBacSi = %s
         """, (MaBacSi,))
 
@@ -496,7 +551,7 @@ async def delete_doctor_account(
             }
 
         await conn.execute("""
-            DELETE FROM BAC_SI
+            DELETE FROM bac_si
             WHERE MaBacSi = %s
         """, (MaBacSi,))
 
@@ -526,7 +581,7 @@ async def create_xnv_account(
 
         cursor = await conn.execute("""
             SELECT *
-            FROM XET_NGHIEM_VIEN
+            FROM xet_nghiem_vien
             WHERE MaXNV = %s
         """, (MaXNV,))
 
@@ -540,7 +595,7 @@ async def create_xnv_account(
             }
 
         await conn.execute("""
-            INSERT INTO XET_NGHIEM_VIEN (
+            INSERT INTO xet_nghiem_vien (
                 MaXNV,
                 HoTen,
                 SDT,
@@ -581,7 +636,7 @@ async def delete_xnv_account(
 
         cursor = await conn.execute("""
             SELECT *
-            FROM XET_NGHIEM_VIEN
+            FROM xet_nghiem_vien
             WHERE MaXNV = %s
         """, (MaXNV,))
 
@@ -595,7 +650,7 @@ async def delete_xnv_account(
             }
 
         await conn.execute("""
-            DELETE FROM XET_NGHIEM_VIEN
+            DELETE FROM xet_nghiem_vien
             WHERE MaXNV = %s
         """, (MaXNV,))
 
@@ -622,7 +677,7 @@ async def change_doctor_password(
 
         cursor = await conn.execute("""
             SELECT *
-            FROM BAC_SI
+            FROM bac_si
             WHERE MaBacSi = %s
         """, (MaBacSi,))
 
@@ -636,7 +691,7 @@ async def change_doctor_password(
             }
 
         await conn.execute("""
-            UPDATE BAC_SI
+            UPDATE bac_si
             SET MatKhau = %s
             WHERE MaBacSi = %s
         """, (
@@ -667,7 +722,7 @@ async def change_xnv_password(
 
         cursor = await conn.execute("""
             SELECT *
-            FROM XET_NGHIEM_VIEN
+            FROM xet_nghiem_vien
             WHERE MaXNV = %s
         """, (MaXNV,))
 
@@ -681,7 +736,7 @@ async def change_xnv_password(
             }
 
         await conn.execute("""
-            UPDATE XET_NGHIEM_VIEN
+            UPDATE xet_nghiem_vien
             SET MatKhau = %s
             WHERE MaXNV = %s
         """, (

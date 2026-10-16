@@ -9,6 +9,7 @@ class XetNghiemVien:
     SDT: str
     MatKhau: str
     MaChiNhanh: str
+    TrangThai: str = "Đang hoạt động"
 
     __tablename__ = "XET_NGHIEM_VIEN"
 
@@ -20,4 +21,5 @@ class XetNghiemVien:
             SDT=d.get("SDT"),
             MatKhau=d.get("MatKhau"),
             MaChiNhanh=d.get("MaChiNhanh"),
+            TrangThai=d.get("TrangThai") or "Đang hoạt động",
         )

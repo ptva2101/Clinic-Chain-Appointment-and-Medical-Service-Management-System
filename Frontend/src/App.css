@@ -681,6 +681,24 @@
   font-weight: 800;
 }
 
+.admin-muted-text {
+  margin: -4px 0 14px;
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.admin-error-text {
+  margin: -4px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
 .admin-filter-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(220px, 1fr));

@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS BAC_SI (
     HoTen TEXT NOT NULL,
     ChuyenKhoa TEXT NOT NULL, -- Dùng để tự động lọc bác sĩ theo dịch vụ
     SDT TEXT,
-    MatKhau TEXT NOT NULL
+    MatKhau TEXT NOT NULL,
+    TrangThai TEXT NOT NULL DEFAULT 'Đang hoạt động' CHECK (TrangThai IN ('Đang hoạt động', 'Đã khóa'))
 );
                      
 CREATE TABLE IF NOT EXISTS CHI_NHANH (
@@ -70,6 +71,7 @@ CREATE TABLE IF NOT EXISTS LE_TAN (
     SDT TEXT,
     MatKhau TEXT NOT NULL,
     MaChiNhanh TEXT UNIQUE NOT NULL, -- Khóa ngoại liên kết 1-1 (UNIQUE đảm bảo mỗi chi nhánh chỉ có 1 lễ tân)
+    TrangThai TEXT NOT NULL DEFAULT 'Đang hoạt động' CHECK (TrangThai IN ('Đang hoạt động', 'Đã khóa')),
     FOREIGN KEY (MaChiNhanh) REFERENCES CHI_NHANH(MaChiNhanh)
 );
 
@@ -79,6 +81,7 @@ CREATE TABLE IF NOT EXISTS XET_NGHIEM_VIEN (
     SDT TEXT,
     MatKhau TEXT NOT NULL,
     MaChiNhanh TEXT UNIQUE NOT NULL, -- Khóa ngoại liên kết 1-1 (UNIQUE đảm bảo mỗi chi nhánh chỉ có 1 XNV)
+    TrangThai TEXT NOT NULL DEFAULT 'Đang hoạt động' CHECK (TrangThai IN ('Đang hoạt động', 'Đã khóa')),
     FOREIGN KEY (MaChiNhanh) REFERENCES CHI_NHANH(MaChiNhanh)
 );
 
@@ -101,6 +104,7 @@ CREATE TABLE IF NOT EXISTS CHI_NHANH_DICH_VU (
     MaChiNhanh TEXT NOT NULL,
     MaDichVu TEXT NOT NULL,
     SlotGioiHan INTEGER NOT NULL,
+    TrangThai TEXT NOT NULL DEFAULT 'Đang cung cấp' CHECK (TrangThai IN ('Đang cung cấp', 'Tạm ngừng')),
     FOREIGN KEY (MaChiNhanh) REFERENCES CHI_NHANH(MaChiNhanh) ON DELETE CASCADE,
     FOREIGN KEY (MaDichVu) REFERENCES DICH_VU(MaDichVu) ON DELETE CASCADE
 );
@@ -145,6 +149,7 @@ CREATE TABLE IF NOT EXISTS LICH_SU_THONG_BAO (
     MaBenhAn TEXT NOT NULL,
     NoiDung TEXT NOT NULL,
     TrangThai TEXT NOT NULL CHECK (TrangThai IN ('Success', 'Failed')),
+    DaDoc INTEGER NOT NULL DEFAULT 0 CHECK (DaDoc IN (0, 1)),
     Loi TEXT,
     ThoiGianGui TEXT NOT NULL, -- Timestamp hệ thống gửi tin
     FOREIGN KEY (MaLichHen) REFERENCES LICH_HEN(MaLichHen) ON DELETE CASCADE,

@@ -9,6 +9,7 @@ class LichSuThongBao:
     MaBenhAn: str
     NoiDung: str
     TrangThai: Optional[str]
+    DaDoc: int = 0
 
     __tablename__ = "LICH_SU_THONG_BAO"
 
@@ -20,4 +21,5 @@ class LichSuThongBao:
             MaBenhAn=d.get("MaBenhAn"),
             NoiDung=d.get("NoiDung"),
             TrangThai=d.get("TrangThai"),
+            DaDoc=int(d.get("DaDoc") or 0),
         )

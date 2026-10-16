@@ -29,14 +29,14 @@ async def get_checkin_appointments(ma_chi_nhanh: str, ngay: str):
                 LH.MaLeTan,
                 LH.GiaCuoi,
                 LH.PaymentToken
-            FROM LICH_HEN LH
-            JOIN BENH_NHAN BN
+            FROM lich_hen LH
+            JOIN benh_nhan BN
                 ON LH.MaBenhAn = BN.MaBenhAn
-            JOIN CHI_NHANH_DICH_VU CNDV
+            JOIN chi_nhanh_dich_vu CNDV
                 ON LH.MaCauHinh = CNDV.MaCauHinh
-            JOIN DICH_VU DV
+            JOIN dich_vu DV
                 ON CNDV.MaDichVu = DV.MaDichVu
-            LEFT JOIN BAC_SI BS
+            LEFT JOIN bac_si BS
                 ON LH.MaBacSi = BS.MaBacSi
             WHERE
                 CNDV.MaChiNhanh = %s
@@ -102,14 +102,14 @@ async def search_checkin_appointment(keyword: str, ma_chi_nhanh: str, ngay: str 
                 LH.MaLeTan,
                 LH.GiaCuoi,
                 LH.PaymentToken
-            FROM LICH_HEN LH
-            JOIN BENH_NHAN BN
+            FROM lich_hen LH
+            JOIN benh_nhan BN
                 ON LH.MaBenhAn = BN.MaBenhAn
-            JOIN CHI_NHANH_DICH_VU CNDV
+            JOIN chi_nhanh_dich_vu CNDV
                 ON LH.MaCauHinh = CNDV.MaCauHinh
-            JOIN DICH_VU DV
+            JOIN dich_vu DV
                 ON CNDV.MaDichVu = DV.MaDichVu
-            LEFT JOIN BAC_SI BS
+            LEFT JOIN bac_si BS
                 ON LH.MaBacSi = BS.MaBacSi
             WHERE
                 CNDV.MaChiNhanh = %s
@@ -161,8 +161,8 @@ async def checkin_patient(
                 LH.MaBacSi,
                 LH.MaLeTan,
                 CNDV.MaChiNhanh
-            FROM LICH_HEN LH
-            JOIN CHI_NHANH_DICH_VU CNDV
+            FROM lich_hen LH
+            JOIN chi_nhanh_dich_vu CNDV
                 ON LH.MaCauHinh = CNDV.MaCauHinh
             WHERE LH.MaLichHen = %s
             """,
@@ -201,8 +201,8 @@ async def checkin_patient(
         queue_cursor = await conn.execute(
             """
             SELECT COALESCE(MAX(LH.STT), 0) + 1 AS NextQueueNumber
-            FROM LICH_HEN LH
-            JOIN CHI_NHANH_DICH_VU CNDV
+            FROM lich_hen LH
+            JOIN chi_nhanh_dich_vu CNDV
                 ON LH.MaCauHinh = CNDV.MaCauHinh
             WHERE
                 CNDV.MaChiNhanh = %s
@@ -223,7 +223,7 @@ async def checkin_patient(
 
         await conn.execute(
             """
-            UPDATE LICH_HEN
+            UPDATE lich_hen
             SET TrangThai = 'Chờ khám',
                 STT = %s,
                 MaLeTan = %s
@@ -286,14 +286,14 @@ async def get_waiting_list_by_doctor(
                 BS.HoTen AS TenBacSi,
                 BS.ChuyenKhoa,
                 LH.TrangThai
-            FROM LICH_HEN LH
-            JOIN BENH_NHAN BN
+            FROM lich_hen LH
+            JOIN benh_nhan BN
                 ON LH.MaBenhAn = BN.MaBenhAn
-            JOIN CHI_NHANH_DICH_VU CNDV
+            JOIN chi_nhanh_dich_vu CNDV
                 ON LH.MaCauHinh = CNDV.MaCauHinh
-            JOIN DICH_VU DV
+            JOIN dich_vu DV
                 ON CNDV.MaDichVu = DV.MaDichVu
-            LEFT JOIN BAC_SI BS
+            LEFT JOIN bac_si BS
                 ON LH.MaBacSi = BS.MaBacSi
             WHERE
                 LH.MaBacSi = %s

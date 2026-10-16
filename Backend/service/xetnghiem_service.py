@@ -34,20 +34,20 @@ async def get_tests_by_branch(ma_chi_nhanh: str):
                 CNDV.MaChiNhanh,
                 BS.HoTen AS TenBacSi,
                 BHYT.TyLeHuong
-            FROM CHI_TIET_XET_NGHIEM CTXN
-            JOIN LUOT_KHAM LK
+            FROM chi_tiet_xet_nghiem CTXN
+            JOIN luot_kham LK
                 ON CTXN.MaLuotKham = LK.MaLuotKham
-            JOIN LICH_HEN LH
+            JOIN lich_hen LH
                 ON LK.MaLichHen = LH.MaLichHen
-            JOIN BENH_NHAN BN
+            JOIN benh_nhan BN
                 ON LH.MaBenhAn = BN.MaBenhAn
-            LEFT JOIN DANH_MUC_BHYT BHYT
+            LEFT JOIN danh_muc_bhyt BHYT
                 ON BN.KyTuDauBHYT = BHYT.KyTuDauBHYT
-            JOIN DICH_VU DV
+            JOIN dich_vu DV
                 ON CTXN.MaDichVu = DV.MaDichVu
-            JOIN BAC_SI BS
+            JOIN bac_si BS
                 ON LK.MaBacSi = BS.MaBacSi
-            JOIN CHI_NHANH_DICH_VU CNDV
+            JOIN chi_nhanh_dich_vu CNDV
                 ON LH.MaCauHinh = CNDV.MaCauHinh
             WHERE CNDV.MaChiNhanh = %s
             ORDER BY LH.NgayKham DESC, LH.CaKham DESC, BN.HoTen
@@ -90,20 +90,20 @@ async def get_pending_tests(ma_chi_nhanh: str):
                 CNDV.MaChiNhanh,
                 BS.HoTen AS TenBacSi,
                 BHYT.TyLeHuong
-            FROM CHI_TIET_XET_NGHIEM CTXN
-            JOIN LUOT_KHAM LK
+            FROM chi_tiet_xet_nghiem CTXN
+            JOIN luot_kham LK
                 ON CTXN.MaLuotKham = LK.MaLuotKham
-            JOIN LICH_HEN LH
+            JOIN lich_hen LH
                 ON LK.MaLichHen = LH.MaLichHen
-            JOIN BENH_NHAN BN
+            JOIN benh_nhan BN
                 ON LH.MaBenhAn = BN.MaBenhAn
-            LEFT JOIN DANH_MUC_BHYT BHYT
+            LEFT JOIN danh_muc_bhyt BHYT
                 ON BN.KyTuDauBHYT = BHYT.KyTuDauBHYT
-            JOIN DICH_VU DV
+            JOIN dich_vu DV
                 ON CTXN.MaDichVu = DV.MaDichVu
-            JOIN BAC_SI BS
+            JOIN bac_si BS
                 ON LK.MaBacSi = BS.MaBacSi
-            JOIN CHI_NHANH_DICH_VU CNDV
+            JOIN chi_nhanh_dich_vu CNDV
                 ON LH.MaCauHinh = CNDV.MaCauHinh
             WHERE
                 CTXN.TrangThaiXetNghiem = 'Chưa thực hiện'
@@ -137,12 +137,12 @@ async def accept_test_request(ma_chi_tiet_xn: str, ma_chi_nhanh: str):
 
         cursor = await conn.execute("""
             SELECT CTXN.*, CNDV.MaChiNhanh
-            FROM CHI_TIET_XET_NGHIEM CTXN
-            JOIN LUOT_KHAM LK
+            FROM chi_tiet_xet_nghiem CTXN
+            JOIN luot_kham LK
                 ON CTXN.MaLuotKham = LK.MaLuotKham
-            JOIN LICH_HEN LH
+            JOIN lich_hen LH
                 ON LK.MaLichHen = LH.MaLichHen
-            JOIN CHI_NHANH_DICH_VU CNDV
+            JOIN chi_nhanh_dich_vu CNDV
                 ON LH.MaCauHinh = CNDV.MaCauHinh
             WHERE CTXN.MaChiTietXN = %s
         """, (ma_chi_tiet_xn,))
@@ -176,16 +176,16 @@ async def accept_test_request(ma_chi_tiet_xn: str, ma_chi_nhanh: str):
             SELECT
                 DV.GiaGoc,
                 CAST(DV.GiaGoc * (1 - COALESCE(BHYT.TyLeHuong, 0)) AS SIGNED) AS GiaCuoiThucTra
-            FROM CHI_TIET_XET_NGHIEM CTXN
-            JOIN LUOT_KHAM LK
+            FROM chi_tiet_xet_nghiem CTXN
+            JOIN luot_kham LK
                 ON CTXN.MaLuotKham = LK.MaLuotKham
-            JOIN LICH_HEN LH
+            JOIN lich_hen LH
                 ON LK.MaLichHen = LH.MaLichHen
-            JOIN BENH_NHAN BN
+            JOIN benh_nhan BN
                 ON LH.MaBenhAn = BN.MaBenhAn
-            LEFT JOIN DANH_MUC_BHYT BHYT
+            LEFT JOIN danh_muc_bhyt BHYT
                 ON BN.KyTuDauBHYT = BHYT.KyTuDauBHYT
-            JOIN DICH_VU DV
+            JOIN dich_vu DV
                 ON CTXN.MaDichVu = DV.MaDichVu
             WHERE CTXN.MaChiTietXN = %s
         """, (ma_chi_tiet_xn,))
@@ -193,7 +193,7 @@ async def accept_test_request(ma_chi_tiet_xn: str, ma_chi_nhanh: str):
         gia_cuoi = price_row["GiaCuoiThucTra"] if price_row else req.get("GiaCuoi")
 
         await conn.execute("""
-            UPDATE CHI_TIET_XET_NGHIEM
+            UPDATE chi_tiet_xet_nghiem
             SET PaymentToken = %s,
                 GiaCuoi = %s
             WHERE MaChiTietXN = %s
@@ -250,12 +250,12 @@ async def update_test_result(
 
         cursor = await conn.execute("""
             SELECT CTXN.*, CNDV.MaChiNhanh
-            FROM CHI_TIET_XET_NGHIEM CTXN
-            JOIN LUOT_KHAM LK
+            FROM chi_tiet_xet_nghiem CTXN
+            JOIN luot_kham LK
                 ON CTXN.MaLuotKham = LK.MaLuotKham
-            JOIN LICH_HEN LH
+            JOIN lich_hen LH
                 ON LK.MaLichHen = LH.MaLichHen
-            JOIN CHI_NHANH_DICH_VU CNDV
+            JOIN chi_nhanh_dich_vu CNDV
                 ON LH.MaCauHinh = CNDV.MaCauHinh
             WHERE CTXN.MaChiTietXN = %s
         """, (ma_chi_tiet_xn,))
@@ -284,7 +284,7 @@ async def update_test_result(
             }
 
         await conn.execute("""
-            UPDATE CHI_TIET_XET_NGHIEM
+            UPDATE chi_tiet_xet_nghiem
             SET KetQuaXetNghiem = %s,
                 TrangThaiXetNghiem = 'Đã có kết quả',
                 MaXNV = COALESCE(%s, MaXNV)
@@ -322,77 +322,77 @@ async def update_test_result(
 
 async def get_test_detail(ma_chi_tiet_xn: str):
     conn = await get_connection()
-    
+
     try:
         cursor = await conn.execute("""
-            SELECT 
+            SELECT
                 CTXN.*,
-                
+
                 -- Thông tin dịch vụ xét nghiệm
-                DV_XN.TenDichVu, 
-                DV_XN.ChuyenKhoa, 
-                DV_XN.LoaiDichVu, 
+                DV_XN.TenDichVu,
+                DV_XN.ChuyenKhoa,
+                DV_XN.LoaiDichVu,
                 DV_XN.GiaGoc,
-                
+
                 -- Thông tin lịch hẹn
-                LH.MaLichHen, 
-                LH.NgayKham, 
-                LH.CaKham, 
+                LH.MaLichHen,
+                LH.NgayKham,
+                LH.CaKham,
                 LH.TrangThai AS TrangThaiLichHen,
-                
+
                 -- Thông tin bệnh nhân
-                BN.MaBenhAn, 
-                BN.HoTen AS TenBenhNhan, 
-                BN.NgaySinh, 
-                BN.GioiTinh, 
+                BN.MaBenhAn,
+                BN.HoTen AS TenBenhNhan,
+                BN.NgaySinh,
+                BN.GioiTinh,
                 BN.SDT AS SDTBenhNhan,
-                
+
                 -- Thông tin Bác sĩ chỉ định (Tìm qua Lịch trực & Cấu hình dịch vụ)
-                BS.MaBacSi, 
-                BS.HoTen AS TenBacSi, 
+                BS.MaBacSi,
+                BS.HoTen AS TenBacSi,
                 BS.ChuyenKhoa AS ChuyenKhoaBacSi,
-                
+
                 -- Thông tin Xét nghiệm viên thực hiện
-                XNV.MaXNV, 
-                XNV.HoTen AS TenXetNghiemVien, 
+                XNV.MaXNV,
+                XNV.HoTen AS TenXetNghiemVien,
                 XNV.SDT AS SDTXNV
-                
-            FROM CHI_TIET_XET_NGHIEM CTXN
-            
-            JOIN LUOT_KHAM LK 
+
+            FROM chi_tiet_xet_nghiem CTXN
+
+            JOIN luot_kham LK
                 ON CTXN.MaLuotKham = LK.MaLuotKham
-                
-            JOIN LICH_HEN LH 
+
+            JOIN lich_hen LH
                 ON LK.MaLichHen = LH.MaLichHen
-                
-            JOIN BENH_NHAN BN 
+
+            JOIN benh_nhan BN
                 ON LH.MaBenhAn = BN.MaBenhAn
-                
+
             -- Dịch vụ CỦA XÉT NGHIỆM
-            JOIN DICH_VU DV_XN 
+            JOIN dich_vu DV_XN
                 ON CTXN.MaDichVu = DV_XN.MaDichVu
-                
-            -- TÌM BÁC SĨ CHỈ ĐỊNH 
+
+            -- TÌM BÁC SĨ CHỈ ĐỊNH
             -- 1. Lấy cấu hình dịch vụ khám ban đầu từ Lịch Hẹn
-            JOIN CHI_NHANH_DICH_VU CNDV 
+            JOIN chi_nhanh_dich_vu CNDV
                 ON LH.MaCauHinh = CNDV.MaCauHinh
             -- 2. Lấy chi tiết dịch vụ khám để biết Chuyên Khoa
-            JOIN DICH_VU DV_KHAM 
+            JOIN dich_vu DV_KHAM
                 ON CNDV.MaDichVu = DV_KHAM.MaDichVu
             -- 3. Map với Lịch trực cùng Ngày, cùng Ca, cùng Chi nhánh
-            JOIN LICH_TRUC LTR 
-                ON CNDV.MaChiNhanh = LTR.MaChiNhanh 
-                AND LH.NgayKham = LTR.NgayTruc 
+            JOIN lich_truc LTR
+                ON CNDV.MaChiNhanh = LTR.MaChiNhanh
+                AND LH.NgayKham = LTR.NgayTruc
                 AND LH.CaKham = LTR.CaTruc
             -- 4. Map Bác sĩ trong ca trực đó (phải đúng chuyên khoa khám)
-            JOIN BAC_SI BS 
-                ON LTR.MaBacSi = BS.MaBacSi 
+            JOIN bac_si BS
+                ON LTR.MaBacSi = BS.MaBacSi
                 AND BS.ChuyenKhoa = DV_KHAM.ChuyenKhoa
-                
+
             -- Xét nghiệm viên (Dùng LEFT JOIN vì có thể chưa thực hiện)
-            LEFT JOIN XET_NGHIEM_VIEN XNV 
+            LEFT JOIN xet_nghiem_vien XNV
                 ON CTXN.MaXNV = XNV.MaXNV
-                
+
             WHERE CTXN.MaChiTietXN = %s
         """, (ma_chi_tiet_xn,))
 

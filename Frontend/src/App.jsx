@@ -51,6 +51,7 @@ const getSessionUserId = (user, selectedRole) => {
 const EMPTY_CATALOG_DATA = {
   branches: [],
   services: [],
+  doctors: [],
   branchServices: [],
   diseases: [],
   medicines: [],
@@ -389,7 +390,24 @@ export default function App() {
     })
   }
 
-  const markPatientNotificationsRead = (maBenhAn) => {
+  const markPatientNotificationsRead = async (maBenhAn) => {
+    try {
+      const formData = new FormData()
+      formData.append('ma_benh_an', maBenhAn)
+      const response = await fetch(`${BACKEND_URL}/patient/notifications/mark-read`, {
+        method: 'POST',
+        body: formData,
+      })
+      const result = await response.json()
+
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.message || 'Không thể đánh dấu thông báo đã đọc.')
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể đánh dấu thông báo đã đọc.'
+      console.warn('PATIENT_NOTIFICATIONS_MARK_READ_FAILED', message)
+    }
+
     setNotifications((current) =>
       current.map((notification) =>
         notification.MaBenhAn === maBenhAn || notification.MaBenhNhan === maBenhAn
@@ -418,6 +436,7 @@ export default function App() {
     const endpoints = {
       branches: '/catalog/branches',
       services: '/catalog/services',
+      doctors: '/catalog/doctors',
       branchServices: '/catalog/branch-services',
       diseases: '/catalog/diseases',
       medicines: '/catalog/medicines',
@@ -455,6 +474,7 @@ export default function App() {
       console.info('CATALOG_LOADED', {
         branches: nextCatalog.branches.length,
         services: nextCatalog.services.length,
+        doctors: nextCatalog.doctors.length,
         branchServices: nextCatalog.branchServices.length,
         diseases: nextCatalog.diseases.length,
         medicines: nextCatalog.medicines.length,
@@ -749,6 +769,7 @@ export default function App() {
 	        addPatientNotifications={addPatientNotifications}
 	        addScheduleAdjustment={addScheduleAdjustment}
 	        catalogData={catalogData}
+	        reloadCatalogData={loadCatalogData}
 	      />,
 	    )
 	  }
@@ -976,6 +997,7 @@ function AdminDashboard({
   addPatientNotifications,
   addScheduleAdjustment,
   catalogData = EMPTY_CATALOG_DATA,
+  reloadCatalogData,
 }) {
   const [branches, setBranches] = useState([
     {
@@ -1268,7 +1290,7 @@ function AdminDashboard({
       TrangThai: 'active',
     },
   ])
-  const [patients] = useState([
+  const [patients, setPatients] = useState([
     {
       MaBenhAn: 'BN001',
       HoTen: 'Trần Quang Hải',
@@ -1300,19 +1322,22 @@ function AdminDashboard({
   const [staffForm, setStaffForm] = useState({
     HoTen: '',
     VaiTro: 'Bác sĩ',
-    ChuyenKhoa: 'Nội tổng quát',
+    ChuyenKhoa: 'Nội khoa',
     SDT: '',
     MatKhau: '',
     MaChiNhanh: '',
   })
   const [staffSearch, setStaffSearch] = useState('')
   const [patientSearch, setPatientSearch] = useState('')
+  const [adminStaffLoaded, setAdminStaffLoaded] = useState(false)
+  const [adminStaffLoading, setAdminStaffLoading] = useState(false)
+  const [adminStaffError, setAdminStaffError] = useState('')
   const [serviceSearch, setServiceSearch] = useState('')
   const [newServiceForm, setNewServiceForm] = useState({
     MaDichVu: '',
     TenDichVu: '',
     LoaiDichVu: 'Khám lâm sàng',
-    ChuyenKhoa: 'Nội tổng quát',
+    ChuyenKhoa: 'Nội khoa',
     GiaGoc: '',
   })
   const [branchServices, setBranchServices] = useState([
@@ -1556,14 +1581,110 @@ function AdminDashboard({
   const [adminReportLoading, setAdminReportLoading] = useState(false)
   const [adminReportError, setAdminReportError] = useState('')
 
-  const clinicalDepartments = ['Nội tổng quát', 'Răng hàm mặt', 'Tai mũi họng']
-  const serviceDepartments = ['Nội tổng quát', 'Răng hàm mặt', 'Tai mũi họng', 'Xét nghiệm']
+  const clinicalDepartments = [
+    'Nội khoa',
+    'Nội tổng quát',
+    'Răng - Hàm - Mặt',
+    'Răng hàm mặt',
+    'Tai - Mũi - Họng',
+    'Tai mũi họng',
+  ]
+  const serviceDepartments = [
+    'Nội khoa',
+    'Nội tổng quát',
+    'Răng - Hàm - Mặt',
+    'Răng hàm mặt',
+    'Tai - Mũi - Họng',
+    'Tai mũi họng',
+    'Xét nghiệm',
+  ]
   const serviceTypes = ['Khám lâm sàng', 'Xét nghiệm', 'Điều trị']
   const bhytCategories = [
     { KyTuDauBHYT: 'TE', DoiTuongChinhSach: 'Trẻ em dưới 6 tuổi', TyLeHuong: 1 },
     { KyTuDauBHYT: 'HT', DoiTuongChinhSach: 'Cán bộ Hưu trí', TyLeHuong: 0.95 },
     { KyTuDauBHYT: 'DN', DoiTuongChinhSach: 'Người lao động doanh nghiệp', TyLeHuong: 0.8 },
   ]
+
+  const normalizeStaffStatus = (status) => {
+    if (status === 'active') return 'Đang hoạt động'
+    if (status === 'inactive') return 'Đã khóa'
+    return status || 'Đang hoạt động'
+  }
+
+  const isStaffActive = (staff) => normalizeStaffStatus(staff?.TrangThai) === 'Đang hoạt động'
+
+  const clinicalDepartmentOptions = useMemo(() => {
+    const dbDoctorDepartments = staffList
+      .filter((staff) => staff.VaiTro === 'Bác sĩ')
+      .map((staff) => staff.ChuyenKhoa)
+      .filter(Boolean)
+    const dbClinicalServiceDepartments = services
+      .filter((service) => service.LoaiDichVu !== 'Xét nghiệm')
+      .map((service) => service.ChuyenKhoa)
+      .filter(Boolean)
+
+    return Array.from(new Set([...clinicalDepartments, ...dbDoctorDepartments, ...dbClinicalServiceDepartments]))
+  }, [services, staffList])
+
+  const serviceDepartmentOptions = useMemo(() => {
+    const dbServiceDepartments = services
+      .map((service) => service.ChuyenKhoa)
+      .filter(Boolean)
+    const dbDoctorDepartments = staffList
+      .filter((staff) => staff.VaiTro === 'Bác sĩ')
+      .map((staff) => staff.ChuyenKhoa)
+      .filter(Boolean)
+
+    return Array.from(new Set([...serviceDepartments, ...dbServiceDepartments, ...dbDoctorDepartments]))
+  }, [services, staffList])
+
+  const normalizeStaffRecord = (staff) => ({
+    ...staff,
+    MaNhanSu: staff.MaNhanSu || staff.MaBacSi || staff.MaLeTan || staff.MaXNV,
+    VaiTro: staff.VaiTro || (staff.MaBacSi ? 'Bác sĩ' : staff.MaLeTan ? 'Lễ tân' : 'Xét nghiệm viên'),
+    ChuyenKhoa:
+      staff.ChuyenKhoa ||
+      (staff.VaiTro === 'Lễ tân' || staff.MaLeTan
+        ? 'Tiếp nhận'
+        : staff.VaiTro === 'Xét nghiệm viên' || staff.MaXNV
+          ? 'Xét nghiệm'
+          : ''),
+    TrangThai: normalizeStaffStatus(staff.TrangThai),
+  })
+
+  const loadAdminStaffAndPatients = async () => {
+    setAdminStaffLoading(true)
+    setAdminStaffError('')
+
+    try {
+      const [staffResponse, patientResponse] = await Promise.all([
+        fetch(`${BACKEND_URL}/admin/staff`),
+        fetch(`${BACKEND_URL}/admin/patients`),
+      ])
+      const [staffResult, patientResult] = await Promise.all([
+        staffResponse.json(),
+        patientResponse.json(),
+      ])
+
+      if (!staffResponse.ok || !staffResult?.success) {
+        throw new Error(staffResult?.message || 'Không thể tải danh sách nhân sự.')
+      }
+
+      if (!patientResponse.ok || !patientResult?.success) {
+        throw new Error(patientResult?.message || 'Không thể tải danh sách bệnh nhân.')
+      }
+
+      setStaffList((staffResult.data || []).map(normalizeStaffRecord))
+      setPatients(patientResult.data || [])
+      setAdminStaffLoaded(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể tải dữ liệu nhân sự từ hệ thống.'
+      setAdminStaffError(message)
+      console.warn('ADMIN_STAFF_PATIENT_LOAD_FAILED', message)
+    } finally {
+      setAdminStaffLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (catalogData?.branches?.length) {
@@ -1578,6 +1699,25 @@ function AdminDashboard({
           catalogData.services.map((service) => [
             service.MaDichVu,
             String(service.GiaGoc ?? ''),
+          ]),
+        ),
+      }))
+    }
+
+    if (catalogData?.branchServices?.length) {
+      setBranchServices(
+        catalogData.branchServices.map((config) => ({
+          ...config,
+          SlotGioiHan: Number(config.SlotGioiHan || 0),
+          TrangThai: config.TrangThai || 'Đang cung cấp',
+        })),
+      )
+      setSlotDrafts((current) => ({
+        ...current,
+        ...Object.fromEntries(
+          catalogData.branchServices.map((config) => [
+            config.MaCauHinh,
+            String(config.SlotGioiHan ?? ''),
           ]),
         ),
       }))
@@ -1607,7 +1747,7 @@ function AdminDashboard({
         }, new Map()).values(),
       )
 
-      if (catalogDoctors.length) {
+      if (catalogDoctors.length && !adminStaffLoaded) {
         setStaffList((current) => {
           const catalogDoctorIds = new Set(catalogDoctors.map((doctor) => doctor.MaNhanSu))
           const remainingStaff = current.filter((staff) => !catalogDoctorIds.has(staff.MaNhanSu))
@@ -1615,10 +1755,16 @@ function AdminDashboard({
         })
       }
     }
-  }, [catalogData])
+  }, [adminStaffLoaded, catalogData])
+
+  useEffect(() => {
+    if (activeMenu === 'staff') {
+      loadAdminStaffAndPatients()
+    }
+  }, [activeMenu])
 
   const doctors = useMemo(
-    () => staffList.filter((staff) => staff.VaiTro === 'Bác sĩ' && staff.TrangThai === 'active'),
+    () => staffList.filter((staff) => staff.VaiTro === 'Bác sĩ' && isStaffActive(staff)),
     [staffList],
   )
 
@@ -2032,7 +2178,7 @@ function AdminDashboard({
     if (field === 'VaiTro') {
       const requiresFixedBranch = value === 'Lễ tân' || value === 'Xét nghiệm viên'
       const departmentByRole = {
-        'Bác sĩ': 'Nội tổng quát',
+        'Bác sĩ': clinicalDepartmentOptions[0] || 'Nội khoa',
         'Lễ tân': 'Tiếp nhận',
         'Xét nghiệm viên': 'Xét nghiệm',
       }
@@ -2085,86 +2231,164 @@ function AdminDashboard({
       }
     }
 
-    const newStaff = {
-      MaNhanSu: buildStaffCode(staffForm.VaiTro),
-      HoTen: staffForm.HoTen.trim(),
-      VaiTro: staffForm.VaiTro,
-      ChuyenKhoa: staffForm.ChuyenKhoa,
-      SDT: staffForm.SDT.trim(),
-      MatKhau: staffForm.MatKhau.trim(),
-      ...(requiresFixedBranch ? { MaChiNhanh: staffForm.MaChiNhanh } : {}),
-      TrangThai: 'active',
+    const createStaff = async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/admin/staff`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            HoTen: staffForm.HoTen.trim(),
+            VaiTro: staffForm.VaiTro,
+            ChuyenKhoa: staffForm.ChuyenKhoa,
+            SDT: staffForm.SDT.trim(),
+            MatKhau: staffForm.MatKhau.trim(),
+            MaChiNhanh: requiresFixedBranch ? staffForm.MaChiNhanh : null,
+          }),
+        })
+        const result = await response.json()
+
+        if (!response.ok || !result?.success) {
+          throw new Error(result?.message || 'Không thể tạo tài khoản nhân sự.')
+        }
+
+        setStaffForm({
+          HoTen: '',
+          VaiTro: 'Bác sĩ',
+          ChuyenKhoa: clinicalDepartmentOptions[0] || 'Nội khoa',
+          SDT: '',
+          MatKhau: '',
+          MaChiNhanh: '',
+        })
+        await loadAdminStaffAndPatients()
+        notify(`Đã tạo tài khoản ${result.data?.MaNhanSu || ''} cho ${result.data?.HoTen || staffForm.HoTen}.`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Không thể tạo tài khoản nhân sự.'
+        notify(message, 'error')
+      }
     }
 
-    setStaffList((current) => [...current, newStaff])
-    setStaffForm({
-      HoTen: '',
-      VaiTro: 'Bác sĩ',
-      ChuyenKhoa: 'Nội tổng quát',
-      SDT: '',
-      MatKhau: '',
-      MaChiNhanh: '',
-    })
-    notify(`Đã tạo tài khoản ${newStaff.MaNhanSu} cho ${newStaff.HoTen}.`)
+    createStaff()
   }
 
   const handleToggleStaffStatus = (maNhanSu) => {
     const target = staffList.find((staff) => staff.MaNhanSu === maNhanSu)
-    const nextStatus = target?.TrangThai === 'active' ? 'inactive' : 'active'
+    const nextStatus = isStaffActive(target) ? 'Đã khóa' : 'Đang hoạt động'
     const nextActiveDoctor = staffList.find(
       (staff) =>
         staff.VaiTro === 'Bác sĩ' &&
-        staff.TrangThai === 'active' &&
+        isStaffActive(staff) &&
         staff.MaNhanSu !== maNhanSu,
     )
 
-    setStaffList((current) =>
-      current.map((staff) =>
-        staff.MaNhanSu === maNhanSu ? { ...staff, TrangThai: nextStatus } : staff,
-      ),
-    )
-    if (
-      target?.VaiTro === 'Bác sĩ' &&
-      nextStatus === 'inactive' &&
-      bulkScheduleForm.MaBacSi === maNhanSu &&
-      nextActiveDoctor
-    ) {
-      setBulkScheduleForm((current) => ({ ...current, MaBacSi: nextActiveDoctor.MaNhanSu }))
+    const updateStatus = async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/admin/staff/${encodeURIComponent(maNhanSu)}/status`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ TrangThai: nextStatus }),
+        })
+        const result = await response.json()
+
+        if (!response.ok || !result?.success) {
+          throw new Error(result?.message || 'Không thể cập nhật trạng thái nhân sự.')
+        }
+
+        setStaffList((current) =>
+          current.map((staff) =>
+            staff.MaNhanSu === maNhanSu ? { ...staff, TrangThai: nextStatus } : staff,
+          ),
+        )
+
+        if (
+          target?.VaiTro === 'Bác sĩ' &&
+          nextStatus === 'Đã khóa' &&
+          bulkScheduleForm.MaBacSi === maNhanSu &&
+          nextActiveDoctor
+        ) {
+          setBulkScheduleForm((current) => ({ ...current, MaBacSi: nextActiveDoctor.MaNhanSu }))
+        }
+
+        notify(
+          nextStatus === 'Đang hoạt động'
+            ? `Đã kích hoạt lại tài khoản ${maNhanSu}.`
+            : `Đã vô hiệu hóa tài khoản ${maNhanSu}.`,
+        )
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Không thể cập nhật trạng thái nhân sự.'
+        notify(message, 'error')
+      }
     }
-    notify(
-      nextStatus === 'active'
-        ? `Đã kích hoạt lại tài khoản ${maNhanSu}.`
-        : `Đã vô hiệu hóa tài khoản ${maNhanSu}.`,
-    )
+
+    updateStatus()
   }
 
-  const handleSaveSlot = (maCauHinh) => {
+  const callAdminJsonApi = async (endpoint, options = {}) => {
+    const response = await fetch(`${BACKEND_URL}${endpoint}`, {
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      ...options,
+    })
+    const result = await response.json()
+
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.message || 'Thao tác quản trị không thành công.')
+    }
+
+    return result
+  }
+
+  const reloadAdminCatalog = async () => {
+    if (typeof reloadCatalogData === 'function') {
+      await reloadCatalogData()
+    }
+  }
+
+  const handleSaveSlot = async (maCauHinh) => {
     const nextSlot = Math.max(0, Number(slotDrafts[maCauHinh] || 0))
-    setBranchServices((current) =>
-      current.map((config) =>
-        config.MaCauHinh === maCauHinh ? { ...config, SlotGioiHan: nextSlot } : config,
-      ),
-    )
-    setSlotDrafts((current) => ({ ...current, [maCauHinh]: String(nextSlot) }))
-    notify(`Đã cập nhật SlotGioiHan cho cấu hình ${maCauHinh}.`)
+
+    try {
+      await callAdminJsonApi(`/admin/branch-services/${encodeURIComponent(maCauHinh)}/slot`, {
+        method: 'PUT',
+        body: JSON.stringify({ SlotGioiHan: nextSlot }),
+      })
+      setBranchServices((current) =>
+        current.map((config) =>
+          config.MaCauHinh === maCauHinh ? { ...config, SlotGioiHan: nextSlot } : config,
+        ),
+      )
+      setSlotDrafts((current) => ({ ...current, [maCauHinh]: String(nextSlot) }))
+      await reloadAdminCatalog()
+      notify(`Đã cập nhật SlotGioiHan cho cấu hình ${maCauHinh}.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không thể cập nhật SlotGioiHan.', 'error')
+    }
   }
 
-  const handleUpdateServicePrice = (maDichVu) => {
+  const handleUpdateServicePrice = async (maDichVu) => {
     const nextPrice = Math.max(0, Number(priceDrafts[maDichVu] || 0))
-    setServices((current) =>
-      current.map((service) =>
-        service.MaDichVu === maDichVu ? { ...service, GiaGoc: nextPrice } : service,
-      ),
-    )
-    setPriceDrafts((current) => ({ ...current, [maDichVu]: String(nextPrice) }))
-    notify(`Đã cập nhật giá chung cho dịch vụ ${maDichVu}.`)
+
+    try {
+      await callAdminJsonApi(`/admin/services/${encodeURIComponent(maDichVu)}/price`, {
+        method: 'PUT',
+        body: JSON.stringify({ GiaGoc: nextPrice }),
+      })
+      setServices((current) =>
+        current.map((service) =>
+          service.MaDichVu === maDichVu ? { ...service, GiaGoc: nextPrice } : service,
+        ),
+      )
+      setPriceDrafts((current) => ({ ...current, [maDichVu]: String(nextPrice) }))
+      await reloadAdminCatalog()
+      notify(`Đã cập nhật giá chung cho dịch vụ ${maDichVu}.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không thể cập nhật giá dịch vụ.', 'error')
+    }
   }
 
   const handleNewServiceFormChange = (field, value) => {
     setNewServiceForm((current) => ({ ...current, [field]: value }))
   }
 
-  const handleAddService = (event) => {
+  const handleAddService = async (event) => {
     event.preventDefault()
     const maDichVu = newServiceForm.MaDichVu.trim().toUpperCase()
     const tenDichVu = newServiceForm.TenDichVu.trim()
@@ -2180,28 +2404,57 @@ function AdminDashboard({
       return
     }
 
-    const newService = {
-      MaDichVu: maDichVu,
-      TenDichVu: tenDichVu,
-      ChuyenKhoa: newServiceForm.ChuyenKhoa,
-      LoaiDichVu: newServiceForm.LoaiDichVu,
-      GiaGoc: giaGoc,
-    }
+    try {
+      const formData = new FormData()
+      formData.append('ma_dich_vu', maDichVu)
+      formData.append('ten_dich_vu', tenDichVu)
+      formData.append('chuyen_khoa', newServiceForm.ChuyenKhoa)
+      formData.append('loai_dich_vu', newServiceForm.LoaiDichVu)
+      formData.append('gia_goc', String(giaGoc))
 
-    setServices((current) => [...current, newService])
-    setPriceDrafts((current) => ({ ...current, [maDichVu]: String(giaGoc) }))
-    setDistributionForm((current) => ({ ...current, MaDichVu: maDichVu }))
-    setNewServiceForm({
-      MaDichVu: '',
-      TenDichVu: '',
-      LoaiDichVu: 'Khám lâm sàng',
-      ChuyenKhoa: 'Nội tổng quát',
-      GiaGoc: '',
-    })
-    notify(`Đã thêm dịch vụ ${maDichVu} vào danh mục gốc.`)
+      const response = await fetch(`${BACKEND_URL}/admin/services/create`, {
+        method: 'POST',
+        body: formData,
+      })
+      const result = await response.json()
+
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.message || 'Không thể thêm dịch vụ.')
+      }
+
+      await reloadAdminCatalog()
+      setDistributionForm((current) => ({ ...current, MaDichVu: maDichVu }))
+      setNewServiceForm({
+        MaDichVu: '',
+        TenDichVu: '',
+        LoaiDichVu: 'Khám lâm sàng',
+        ChuyenKhoa: serviceDepartmentOptions[0] || 'Nội khoa',
+        GiaGoc: '',
+      })
+      notify(`Đã thêm dịch vụ ${maDichVu} vào danh mục gốc.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không thể thêm dịch vụ.', 'error')
+    }
   }
 
-  const handleDeleteRootService = (maDichVu) => {
+  const handleDeleteRootService = async (maDichVu) => {
+    const confirmed = window.confirm(
+      `Bạn có chắc muốn xóa dịch vụ ${maDichVu}? Hệ thống sẽ chặn nếu dịch vụ đã phát sinh lịch hẹn, xét nghiệm hoặc điều trị.`,
+    )
+    if (!confirmed) return
+
+    try {
+      await callAdminJsonApi(`/admin/services/${encodeURIComponent(maDichVu)}`, {
+        method: 'DELETE',
+      })
+      await reloadAdminCatalog()
+      notify(`Đã xóa dịch vụ gốc ${maDichVu}.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không thể xóa dịch vụ.', 'error')
+    }
+  }
+
+  const handleDeleteRootServiceLocal = (maDichVu) => {
     const remainingServices = services.filter((service) => service.MaDichVu !== maDichVu)
     const relatedConfigs = branchServices.filter((config) => config.MaDichVu === maDichVu)
     const relatedConfigIds = relatedConfigs.map((config) => config.MaCauHinh)
@@ -2234,7 +2487,7 @@ function AdminDashboard({
     setBranchForm((current) => ({ ...current, [field]: value }))
   }
 
-  const handleAddBranch = (event) => {
+  const handleAddBranch = async (event) => {
     event.preventDefault()
     const maChiNhanh = branchForm.MaChiNhanh.trim().toUpperCase()
     const tenChiNhanh = branchForm.TenChiNhanh.trim()
@@ -2250,20 +2503,50 @@ function AdminDashboard({
       return
     }
 
-    const newBranch = {
-      MaChiNhanh: maChiNhanh,
-      TenChiNhanh: tenChiNhanh,
-      DiaChi: diaChi,
-      SDT: branchForm.SDT.trim(),
-    }
+    try {
+      const formData = new FormData()
+      formData.append('ma_chi_nhanh', maChiNhanh)
+      formData.append('ten_chi_nhanh', tenChiNhanh)
+      formData.append('dia_chi', diaChi)
+      formData.append('sdt', branchForm.SDT.trim())
 
-    setBranches((current) => [...current, newBranch])
-    setDistributionForm((current) => ({ ...current, MaChiNhanh: maChiNhanh }))
-    setBranchForm({ MaChiNhanh: '', TenChiNhanh: '', DiaChi: '', SDT: '' })
-    notify(`Đã thêm chi nhánh ${maChiNhanh}.`)
+      const response = await fetch(`${BACKEND_URL}/admin/branches/create`, {
+        method: 'POST',
+        body: formData,
+      })
+      const result = await response.json()
+
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.message || 'Không thể thêm chi nhánh.')
+      }
+
+      await reloadAdminCatalog()
+      setDistributionForm((current) => ({ ...current, MaChiNhanh: maChiNhanh }))
+      setBranchForm({ MaChiNhanh: '', TenChiNhanh: '', DiaChi: '', SDT: '' })
+      notify(`Đã thêm chi nhánh ${maChiNhanh}.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không thể thêm chi nhánh.', 'error')
+    }
   }
 
-  const handleDeleteRootBranch = (maChiNhanh) => {
+  const handleDeleteRootBranch = async (maChiNhanh) => {
+    const confirmed = window.confirm(
+      `Bạn có chắc muốn xóa chi nhánh ${maChiNhanh}? Hệ thống sẽ chặn nếu chi nhánh đã có lịch hẹn, lịch trực hoặc nhân sự phụ trách.`,
+    )
+    if (!confirmed) return
+
+    try {
+      await callAdminJsonApi(`/admin/branches/${encodeURIComponent(maChiNhanh)}`, {
+        method: 'DELETE',
+      })
+      await reloadAdminCatalog()
+      notify(`Đã xóa chi nhánh ${maChiNhanh}.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không thể xóa chi nhánh.', 'error')
+    }
+  }
+
+  const handleDeleteRootBranchLocal = (maChiNhanh) => {
     const remainingBranches = branches.filter((branch) => branch.MaChiNhanh !== maChiNhanh)
     const relatedConfigs = branchServices.filter((config) => config.MaChiNhanh === maChiNhanh)
     const relatedConfigIds = relatedConfigs.map((config) => config.MaCauHinh)
@@ -2307,7 +2590,7 @@ function AdminDashboard({
     return `CH_${branchSuffix}_${serviceSuffix}`.replaceAll('__', '_')
   }
 
-  const handleApplyBranchService = (event) => {
+  const handleApplyBranchService = async (event) => {
     event.preventDefault()
     if (!distributionForm.MaChiNhanh || !distributionForm.MaDichVu) {
       notify('Cần có ít nhất một chi nhánh và một dịch vụ để áp dụng cấu hình.', 'error')
@@ -2315,63 +2598,73 @@ function AdminDashboard({
     }
 
     const slot = Math.max(0, Number(distributionForm.SlotGioiHan || 0))
-    const existingConfig = branchServices.find(
-      (config) =>
-        config.MaChiNhanh === distributionForm.MaChiNhanh &&
-        config.MaDichVu === distributionForm.MaDichVu,
-    )
 
-    if (existingConfig) {
+    try {
+      const result = await callAdminJsonApi('/admin/branch-services', {
+        method: 'POST',
+        body: JSON.stringify({
+          MaChiNhanh: distributionForm.MaChiNhanh,
+          MaDichVu: distributionForm.MaDichVu,
+          SlotGioiHan: slot,
+        }),
+      })
+      await reloadAdminCatalog()
+      if (result.data?.MaCauHinh) {
+        setSlotDrafts((current) => ({ ...current, [result.data.MaCauHinh]: String(slot) }))
+      }
+      notify(`Đã áp dụng dịch vụ ${distributionForm.MaDichVu} cho ${distributionForm.MaChiNhanh}.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không thể áp dụng dịch vụ cho chi nhánh.', 'error')
+    }
+  }
+
+  const handleToggleBranchService = async (maCauHinh) => {
+    const target = branchServices.find((config) => config.MaCauHinh === maCauHinh)
+    const isCurrentlyActive = target?.TrangThai === 'active' || target?.TrangThai === 'Đang cung cấp'
+    const nextStatus = isCurrentlyActive ? 'Tạm ngừng' : 'Đang cung cấp'
+
+    try {
+      await callAdminJsonApi(`/admin/branch-services/${encodeURIComponent(maCauHinh)}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ TrangThai: nextStatus }),
+      })
       setBranchServices((current) =>
         current.map((config) =>
-          config.MaCauHinh === existingConfig.MaCauHinh
-            ? { ...config, SlotGioiHan: slot, TrangThai: 'active' }
-            : config,
+          config.MaCauHinh === maCauHinh ? { ...config, TrangThai: nextStatus } : config,
         ),
       )
-      setSlotDrafts((current) => ({ ...current, [existingConfig.MaCauHinh]: String(slot) }))
-      notify(`Đã cập nhật và hiển thị lại cấu hình ${existingConfig.MaCauHinh}.`)
-      return
+      await reloadAdminCatalog()
+      notify(
+        nextStatus === 'Đang cung cấp'
+          ? `Đã mở lại cấu hình ${maCauHinh} cho bệnh nhân đặt lịch.`
+          : `Đã tạm ngừng cấu hình ${maCauHinh}; bệnh nhân sẽ không đặt lịch mới được.`,
+      )
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không thể cập nhật trạng thái cấu hình.', 'error')
     }
-
-    const maCauHinh = buildBranchServiceCode(distributionForm.MaChiNhanh, distributionForm.MaDichVu)
-    const newConfig = {
-      MaCauHinh: maCauHinh,
-      MaChiNhanh: distributionForm.MaChiNhanh,
-      MaDichVu: distributionForm.MaDichVu,
-      SlotGioiHan: slot,
-      TrangThai: 'active',
-    }
-
-    setBranchServices((current) => [...current, newConfig])
-    setSlotDrafts((current) => ({ ...current, [maCauHinh]: String(slot) }))
-    notify(`Đã áp dụng dịch vụ ${distributionForm.MaDichVu} cho ${distributionForm.MaChiNhanh}.`)
   }
 
-  const handleToggleBranchService = (maCauHinh) => {
-    const target = branchServices.find((config) => config.MaCauHinh === maCauHinh)
-    const nextStatus = target?.TrangThai === 'active' ? 'inactive' : 'active'
-
-    setBranchServices((current) =>
-      current.map((config) =>
-        config.MaCauHinh === maCauHinh ? { ...config, TrangThai: nextStatus } : config,
-      ),
+  const handleDeleteBranchService = async (maCauHinh) => {
+    const confirmed = window.confirm(
+      `Bạn có chắc muốn xóa cấu hình ${maCauHinh}? Hệ thống sẽ chặn nếu cấu hình đã phát sinh lịch hẹn.`,
     )
-    notify(
-      nextStatus === 'active'
-        ? `Đã hiện lại cấu hình ${maCauHinh}.`
-        : `Đã ẩn cấu hình ${maCauHinh}.`,
-    )
-  }
+    if (!confirmed) return
 
-  const handleDeleteBranchService = (maCauHinh) => {
-    setBranchServices((current) => current.filter((config) => config.MaCauHinh !== maCauHinh))
-    setSlotDrafts((current) => {
-      const nextDrafts = { ...current }
-      delete nextDrafts[maCauHinh]
-      return nextDrafts
-    })
-    notify(`Đã xóa cấu hình ${maCauHinh} khỏi chi nhánh.`)
+    try {
+      await callAdminJsonApi(`/admin/branch-services/${encodeURIComponent(maCauHinh)}`, {
+        method: 'DELETE',
+      })
+      setBranchServices((current) => current.filter((config) => config.MaCauHinh !== maCauHinh))
+      setSlotDrafts((current) => {
+        const nextDrafts = { ...current }
+        delete nextDrafts[maCauHinh]
+        return nextDrafts
+      })
+      await reloadAdminCatalog()
+      notify(`Đã xóa cấu hình ${maCauHinh} khỏi chi nhánh.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không thể xóa cấu hình dịch vụ chi nhánh.', 'error')
+    }
   }
 
   const handleBulkScheduleFormChange = (field, value) => {
@@ -2653,7 +2946,7 @@ function AdminDashboard({
     const sameSpecialtyDoctors = staffList.filter(
       (staff) =>
         staff.VaiTro === 'Bác sĩ' &&
-        staff.TrangThai === 'active' &&
+        isStaffActive(staff) &&
         staff.MaNhanSu !== schedule.MaBacSi &&
         staff.ChuyenKhoa === currentDoctor?.ChuyenKhoa,
     )
@@ -2663,7 +2956,7 @@ function AdminDashboard({
     return staffList.filter(
       (staff) =>
         staff.VaiTro === 'Bác sĩ' &&
-        staff.TrangThai === 'active' &&
+        isStaffActive(staff) &&
         staff.MaNhanSu !== schedule.MaBacSi,
     )
   }
@@ -2794,7 +3087,7 @@ function AdminDashboard({
               disabled={staffForm.VaiTro !== 'Bác sĩ'}
             >
               {staffForm.VaiTro === 'Bác sĩ' ? (
-                clinicalDepartments.map((department) => (
+                clinicalDepartmentOptions.map((department) => (
                   <option key={department} value={department}>
                     {department}
                   </option>
@@ -2855,6 +3148,9 @@ function AdminDashboard({
           />
         </label>
 
+        {adminStaffLoading && <p className="admin-muted-text">Đang tải dữ liệu nhân sự từ database...</p>}
+        {adminStaffError && <p className="admin-error-text">{adminStaffError}</p>}
+
         <div className="admin-table-wrap">
           <table className="admin-table">
             <thead>
@@ -2879,21 +3175,21 @@ function AdminDashboard({
                   <td>{staff.MaChiNhanh ? getBranchName(staff.MaChiNhanh) : 'Linh hoạt theo lịch trực'}</td>
                   <td>{staff.SDT}</td>
                   <td>
-                    <span className={`status-pill ${staff.TrangThai === 'active' ? 'active' : 'muted'}`}>
-                      {staff.TrangThai === 'active' ? 'Đang hoạt động' : 'Đã khóa'}
+                    <span className={`status-pill ${isStaffActive(staff) ? 'active' : 'muted'}`}>
+                      {isStaffActive(staff) ? 'Đang hoạt động' : 'Đã khóa'}
                     </span>
                   </td>
                   <td>
                     <button
                       type="button"
                       className={
-                        staff.TrangThai === 'active'
+                        isStaffActive(staff)
                           ? 'admin-danger-button'
                           : 'admin-success-button'
                       }
                       onClick={() => handleToggleStaffStatus(staff.MaNhanSu)}
                     >
-                      {staff.TrangThai === 'active' ? 'Vô hiệu hóa' : 'Kích hoạt lại'}
+                      {isStaffActive(staff) ? 'Vô hiệu hóa' : 'Kích hoạt lại'}
                     </button>
                   </td>
                 </tr>
@@ -3005,7 +3301,7 @@ function AdminDashboard({
               value={newServiceForm.ChuyenKhoa}
               onChange={(event) => handleNewServiceFormChange('ChuyenKhoa', event.target.value)}
             >
-              {serviceDepartments.map((department) => (
+              {serviceDepartmentOptions.map((department) => (
                 <option key={department} value={department}>
                   {department}
                 </option>
@@ -3299,8 +3595,8 @@ function AdminDashboard({
                       />
                     </td>
                     <td>
-                      <span className={`status-pill ${config.TrangThai === 'active' ? 'active' : 'muted'}`}>
-                        {config.TrangThai === 'active' ? 'Đang hiện' : 'Đang ẩn'}
+                      <span className={`status-pill ${config.TrangThai === 'active' || config.TrangThai === 'Đang cung cấp' ? 'active' : 'muted'}`}>
+                        {config.TrangThai === 'active' || config.TrangThai === 'Đang cung cấp' ? 'Đang cung cấp' : 'Tạm ngừng'}
                       </span>
                     </td>
                     <td>
@@ -3315,13 +3611,13 @@ function AdminDashboard({
                         <button
                           type="button"
                           className={
-                            config.TrangThai === 'active'
+                            config.TrangThai === 'active' || config.TrangThai === 'Đang cung cấp'
                               ? 'admin-danger-button'
                               : 'admin-success-button'
                           }
                           onClick={() => handleToggleBranchService(config.MaCauHinh)}
                         >
-                          {config.TrangThai === 'active' ? 'Ẩn' : 'Hiện'}
+                          {config.TrangThai === 'active' || config.TrangThai === 'Đang cung cấp' ? 'Tạm ngừng' : 'Mở lại'}
                         </button>
                         <button
                           type="button"
@@ -3640,9 +3936,9 @@ function AdminDashboard({
         </div>
         <div className="finance-kpi-card success">
           <Activity size={24} />
-          <span>Tổng Lượt Khám</span>
+          <span>Tổng Lượt Hoàn Thành</span>
           <strong>{displayReportData.completedAppointmentCount}</strong>
-          <small>Trạng thái Hoàn thành hoặc Đã khám trong tháng</small>
+          <small>Lịch hẹn có trạng thái Hoàn thành hoặc dữ liệu cũ Đã khám</small>
         </div>
         <div className="finance-kpi-card danger">
           <Users size={24} />
@@ -3659,7 +3955,7 @@ function AdminDashboard({
             <thead>
               <tr>
                 <th>Chi nhánh</th>
-                <th>Tổng lượt khám thành công</th>
+                <th>Tổng lượt hoàn thành</th>
                 <th>Doanh thu thực thu</th>
                 <th>Tiền bảo hiểm chi trả</th>
               </tr>
@@ -6501,19 +6797,15 @@ function ReceptionistDashboard({ user, onLogout, showNotification, catalogData =
 
   const effectiveBranches = catalogData?.branches?.length ? catalogData.branches : branches
   const effectiveServices = catalogData?.services?.length ? catalogData.services : services
-  const catalogDoctors = Object.values(
-    (catalogData?.doctorSchedules || []).reduce((doctorMap, schedule) => {
-      if (!schedule.MaBacSi || doctorMap[schedule.MaBacSi]) return doctorMap
-
-      doctorMap[schedule.MaBacSi] = {
-        MaBacSi: schedule.MaBacSi,
-        HoTen: schedule.TenBacSi || schedule.HoTen || schedule.MaBacSi,
-        ChuyenKhoa: schedule.ChuyenKhoa || '',
-        SDT: schedule.SDT || '',
-      }
-      return doctorMap
-    }, {}),
-  )
+  const catalogDoctors = (catalogData?.doctors || [])
+    .filter((doctor) => (doctor.TrangThai || 'Đang hoạt động') === 'Đang hoạt động')
+    .map((doctor) => ({
+      MaBacSi: doctor.MaBacSi,
+      HoTen: doctor.HoTen || doctor.MaBacSi,
+      ChuyenKhoa: doctor.ChuyenKhoa || '',
+      SDT: doctor.SDT || '',
+      TrangThai: doctor.TrangThai || 'Đang hoạt động',
+    }))
   const effectiveStaffList = catalogDoctors.length
     ? catalogDoctors.concat(
         staffList.filter((mockDoctor) => !catalogDoctors.some((doctor) => doctor.MaBacSi === mockDoctor.MaBacSi)),
@@ -6527,18 +6819,19 @@ function ReceptionistDashboard({ user, onLogout, showNotification, catalogData =
       .filter((schedule) => schedule.MaChiNhanh === maChiNhanh && schedule.NgayTruc === TODAY)
       .reduce((currentMap, schedule) => {
         if (!schedule.MaBacSi || currentMap[schedule.MaBacSi]) return currentMap
+        const catalogDoctor = catalogDoctors.find((doctor) => doctor.MaBacSi === schedule.MaBacSi)
 
         currentMap[schedule.MaBacSi] = {
           MaBacSi: schedule.MaBacSi,
-          HoTen: schedule.TenBacSi || schedule.HoTen || schedule.MaBacSi,
-          ChuyenKhoa: schedule.ChuyenKhoa || '',
-          SDT: schedule.SDT || '',
+          HoTen: catalogDoctor?.HoTen || schedule.TenBacSi || schedule.HoTen || schedule.MaBacSi,
+          ChuyenKhoa: catalogDoctor?.ChuyenKhoa || schedule.ChuyenKhoa || '',
+          SDT: catalogDoctor?.SDT || schedule.SDT || '',
         }
         return currentMap
       }, {})
 
     return Object.values(doctorMap)
-  }, [catalogData?.doctorSchedules, maChiNhanh, TODAY])
+  }, [catalogData?.doctorSchedules, catalogDoctors, maChiNhanh, TODAY])
 
   const normalizeReceptionBooking = (appointment) => ({
     MaLichHen: appointment.MaLichHen,
@@ -7335,8 +7628,6 @@ function TechnicianDashboard({ user, onLogout, showNotification, onUpdateUser, c
 
 	  const effectiveBranches = catalogData?.branches?.length ? catalogData.branches : branches
 	  const effectiveServices = catalogData?.services?.length ? catalogData.services : services
-	  const effectiveDiseases = catalogData?.diseases?.length ? catalogData.diseases : diseases
-	  const effectiveMedicines = catalogData?.medicines?.length ? catalogData.medicines : medicines
 	  const effectiveBhytCategories = catalogData?.bhyt?.length ? catalogData.bhyt : bhytCategories
   const allKnownServices = effectiveServices.concat(
     services.filter((mockService) => !effectiveServices.some((service) => service.MaDichVu === mockService.MaDichVu)),
@@ -8469,23 +8760,34 @@ function PatientDashboard({
   const allKnownBranches = effectiveBranches.concat(
     branches.filter((mockBranch) => !effectiveBranches.some((branch) => branch.MaChiNhanh === mockBranch.MaChiNhanh)),
   )
-  const derivedDoctors = Object.values(
+  const catalogDoctors = (catalogData?.doctors || [])
+    .filter((doctor) => (doctor.TrangThai || 'Đang hoạt động') === 'Đang hoạt động')
+    .map((doctor) => ({
+      MaBacSi: doctor.MaBacSi,
+      HoTen: doctor.HoTen || doctor.MaBacSi,
+      ChuyenKhoa: doctor.ChuyenKhoa || '',
+      SDT: doctor.SDT || '',
+      TrangThai: doctor.TrangThai || 'Đang hoạt động',
+    }))
+  const scheduleDerivedDoctors = Object.values(
     effectiveDoctorSchedules.reduce((doctorMap, schedule) => {
       if (!schedule.MaBacSi || doctorMap[schedule.MaBacSi]) return doctorMap
       const mockDoctor = staffList.find((doctor) => doctor.MaBacSi === schedule.MaBacSi)
+      const catalogDoctor = catalogDoctors.find((doctor) => doctor.MaBacSi === schedule.MaBacSi)
 
       doctorMap[schedule.MaBacSi] = {
         MaBacSi: schedule.MaBacSi,
-        HoTen: schedule.TenBacSi || schedule.HoTen || schedule.MaBacSi,
-        ChuyenKhoa: schedule.ChuyenKhoa || mockDoctor?.ChuyenKhoa || '',
-        SDT: schedule.SDT || mockDoctor?.SDT || '',
+        HoTen: catalogDoctor?.HoTen || schedule.TenBacSi || schedule.HoTen || schedule.MaBacSi,
+        ChuyenKhoa: catalogDoctor?.ChuyenKhoa || schedule.ChuyenKhoa || mockDoctor?.ChuyenKhoa || '',
+        SDT: catalogDoctor?.SDT || schedule.SDT || mockDoctor?.SDT || '',
       }
       return doctorMap
     }, {}),
   )
-  const effectiveStaffList = derivedDoctors.length
-    ? derivedDoctors.concat(
-        staffList.filter((mockDoctor) => !derivedDoctors.some((doctor) => doctor.MaBacSi === mockDoctor.MaBacSi)),
+  const dbDoctorSource = catalogDoctors.length ? catalogDoctors : scheduleDerivedDoctors
+  const effectiveStaffList = dbDoctorSource.length
+    ? dbDoctorSource.concat(
+        staffList.filter((mockDoctor) => !dbDoctorSource.some((doctor) => doctor.MaBacSi === mockDoctor.MaBacSi)),
       )
     : staffList
   const effectiveBranchServices = catalogData?.branchServices?.length
@@ -8494,6 +8796,7 @@ function PatientDashboard({
         MaChiNhanh: config.MaChiNhanh,
         MaDichVu: config.MaDichVu,
         SlotGioiHan: Number(config.SlotGioiHan || 15),
+        TrangThai: config.TrangThai || 'Đang cung cấp',
         TenChiNhanh: config.TenChiNhanh || '',
         TenDichVu: config.TenDichVu || '',
         ChuyenKhoa: config.ChuyenKhoa || '',
@@ -8518,6 +8821,9 @@ function PatientDashboard({
         ),
     ),
   )
+
+  const isBranchServiceAvailable = (config) =>
+    !config?.TrangThai || config.TrangThai === 'active' || config.TrangThai === 'Đang cung cấp'
 
   const normalizeAppointmentRow = (appointment) => ({
     MaLichHen: appointment.MaLichHen,
@@ -8581,7 +8887,7 @@ function PatientDashboard({
           MaLichHen: item.MaLichHen,
           NoiDung: item.NoiDung,
           ThoiGianGui: item.ThoiGianGui,
-          read: false,
+          read: Boolean(item.DaDoc || item.read),
         })),
       )
     } catch (error) {
@@ -8712,7 +9018,23 @@ function PatientDashboard({
     { label: 'Chủ Nhật', shortLabel: 'CN', dayIndex: 0 },
   ]
 
-  const clinicalServices = effectiveServices.filter((service) => service.LoaiDichVu === 'Khám lâm sàng')
+  const clinicalServices = effectiveServices.filter(
+    (service) =>
+      service.LoaiDichVu === 'Khám lâm sàng' &&
+      allKnownBranchServices.some(
+        (config) => config.MaDichVu === service.MaDichVu && isBranchServiceAvailable(config),
+      ),
+  )
+  const getAvailableBranchesForService = (maDichVu) =>
+    effectiveBranches.filter((branch) =>
+      allKnownBranchServices.some(
+        (config) =>
+          config.MaChiNhanh === branch.MaChiNhanh &&
+          config.MaDichVu === maDichVu &&
+          isBranchServiceAvailable(config),
+      ),
+    )
+  const bookingAvailableBranches = getAvailableBranchesForService(bookingForm.MaDichVu)
   const filteredClinicalServices = clinicalServices.filter((service) => {
     const keyword = serviceSearch.trim().toLowerCase()
     if (!keyword) return true
@@ -8744,7 +9066,12 @@ function PatientDashboard({
     allKnownBranches.find((branch) => branch.MaChiNhanh === maChiNhanh)?.TenChiNhanh || maChiNhanh
 
   const getBranchConfig = (maChiNhanh, maDichVu) =>
-    allKnownBranchServices.find((config) => config.MaChiNhanh === maChiNhanh && config.MaDichVu === maDichVu)
+    allKnownBranchServices.find(
+      (config) =>
+        config.MaChiNhanh === maChiNhanh &&
+        config.MaDichVu === maDichVu &&
+        isBranchServiceAvailable(config),
+    )
 
 	  const getDoctorInfo = (maBacSi) =>
 	    effectiveStaffList.find((doctor) => doctor.MaBacSi === maBacSi) || {
@@ -9028,12 +9355,13 @@ function PatientDashboard({
     setBookingForm((current) => {
       const next = { ...current }
 
-      if (!effectiveBranches.some((branch) => branch.MaChiNhanh === next.MaChiNhanh)) {
-        next.MaChiNhanh = effectiveBranches[0]?.MaChiNhanh || ''
-      }
-
       if (!clinicalServices.some((service) => service.MaDichVu === next.MaDichVu)) {
         next.MaDichVu = clinicalServices[0]?.MaDichVu || ''
+      }
+
+      const availableBranchesForService = getAvailableBranchesForService(next.MaDichVu)
+      if (!availableBranchesForService.some((branch) => branch.MaChiNhanh === next.MaChiNhanh)) {
+        next.MaChiNhanh = availableBranchesForService[0]?.MaChiNhanh || effectiveBranches[0]?.MaChiNhanh || ''
       }
 
       if (!next.NgayKham || next.NgayKham < patientBookingStartDate || next.NgayKham > patientBookingEndDate) {
@@ -9333,8 +9661,9 @@ function PatientDashboard({
   }
 
   const startTreatmentBooking = (treatment) => {
+    const availableTreatmentBranches = getAvailableBranchesForService(treatment.MaDichVu)
     const initialDraft = {
-      MaChiNhanh: effectiveBranches[0]?.MaChiNhanh || '',
+      MaChiNhanh: availableTreatmentBranches[0]?.MaChiNhanh || effectiveBranches[0]?.MaChiNhanh || '',
       NgayKham: '2026-06-05',
       CaKham: '',
       MaBacSi: '',
@@ -9794,7 +10123,7 @@ function PatientDashboard({
                 value={bookingForm.MaChiNhanh}
                 onChange={(event) => handleBookingFormChange('MaChiNhanh', event.target.value)}
               >
-                {effectiveBranches.map((branch) => (
+                {bookingAvailableBranches.map((branch) => (
                   <option key={branch.MaChiNhanh} value={branch.MaChiNhanh}>
                     {branch.TenChiNhanh}
                   </option>
@@ -9856,7 +10185,7 @@ function PatientDashboard({
                   value={bookingForm.MaChiNhanh}
                   onChange={(event) => handleBookingFormChange('MaChiNhanh', event.target.value)}
                 >
-                  {effectiveBranches.map((branch) => (
+                  {bookingAvailableBranches.map((branch) => (
                     <option key={branch.MaChiNhanh} value={branch.MaChiNhanh}>
                       {branch.TenChiNhanh}
                     </option>
@@ -10012,6 +10341,7 @@ function PatientDashboard({
       ngayKham: draft.NgayKham,
       caKham: Number(draft.CaKham || 0),
     })
+    const treatmentAvailableBranches = getAvailableBranchesForService(treatment.MaDichVu)
 
     if (treatment.TrangThai !== 'Chưa đặt lịch') return null
 
@@ -10033,7 +10363,7 @@ function PatientDashboard({
           value={draft.MaChiNhanh}
           onChange={(event) => handleTreatmentDraftChange(treatment.MaLichTrinh, 'MaChiNhanh', event.target.value)}
         >
-	          {effectiveBranches.map((branch) => (
+	          {treatmentAvailableBranches.map((branch) => (
 	            <option key={branch.MaChiNhanh} value={branch.MaChiNhanh}>
 	              {branch.TenChiNhanh}
 	            </option>

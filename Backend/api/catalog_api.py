@@ -8,6 +8,7 @@ from service.catalog_service import (
     get_branch_services,
     get_branches,
     get_diseases,
+    get_doctors,
     get_doctor_schedules,
     get_medicines,
     get_services,
@@ -32,6 +33,11 @@ async def get_branches_api():
 @router.get("/services", response_model=ResponseModel)
 async def get_services_api():
     return await get_services()
+
+
+@router.get("/doctors", response_model=ResponseModel)
+async def get_doctors_api():
+    return await get_doctors()
 
 
 @router.get("/branch-services", response_model=ResponseModel)

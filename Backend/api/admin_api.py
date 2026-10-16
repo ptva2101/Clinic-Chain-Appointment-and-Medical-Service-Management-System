@@ -22,11 +22,70 @@ class TransferDoctorScheduleRequest(BaseModel):
     newMaBacSi: str
 
 
+class ServicePriceRequest(BaseModel):
+    GiaGoc: int
+
+
+class BranchServiceRequest(BaseModel):
+    MaChiNhanh: str
+    MaDichVu: str
+    SlotGioiHan: int
+
+
+class BranchServiceSlotRequest(BaseModel):
+    SlotGioiHan: int
+
+
+class BranchServiceStatusRequest(BaseModel):
+    TrangThai: str
+
+
+class StaffCreateRequest(BaseModel):
+    HoTen: str
+    VaiTro: str
+    ChuyenKhoa: Optional[str] = None
+    SDT: str
+    MatKhau: str
+    MaChiNhanh: Optional[str] = None
+
+
+class StaffStatusRequest(BaseModel):
+    TrangThai: str
+
+
+@router.get("/staff", response_model=ResponseModel)
+async def get_admin_staff_api():
+    return await get_admin_staff()
+
+
+@router.get("/patients", response_model=ResponseModel)
+async def get_admin_patients_api():
+    return await get_admin_patients()
+
+
+@router.post("/staff", response_model=ResponseModel)
+async def create_staff_account_api(request: StaffCreateRequest):
+    return await create_staff_account(
+        ho_ten=request.HoTen,
+        vai_tro=request.VaiTro,
+        chuyen_khoa=request.ChuyenKhoa or "",
+        sdt=request.SDT,
+        mat_khau=request.MatKhau,
+        ma_chi_nhanh=request.MaChiNhanh,
+    )
+
+
+@router.put("/staff/{ma_nhan_su}/status", response_model=ResponseModel)
+async def update_staff_status_api(ma_nhan_su: str, request: StaffStatusRequest):
+    return await update_staff_status(ma_nhan_su, request.TrangThai)
+
+
 @router.post(
     "/branches/create",
     response_model=ResponseModel
 )
 async def create_branch_api(
+    ma_chi_nhanh: Optional[str] = Form(None),
     ten_chi_nhanh: str = Form(...),
     dia_chi: str = Form(...),
     sdt: Optional[str] = Form(None)
@@ -35,15 +94,22 @@ async def create_branch_api(
     result = await create_branch(
         ten_chi_nhanh=ten_chi_nhanh,
         dia_chi=dia_chi,
-        sdt=sdt
+        sdt=sdt,
+        ma_chi_nhanh=ma_chi_nhanh
     )
     return result
+
+
+@router.delete("/branches/{ma_chi_nhanh}", response_model=ResponseModel)
+async def delete_branch_api(ma_chi_nhanh: str):
+    return await delete_branch(ma_chi_nhanh)
 
 @router.post(
     "/services/create",
     response_model=ResponseModel
 )
 async def create_service_api(
+    ma_dich_vu: Optional[str] = Form(None),
     ten_dich_vu: str = Form(...),
     chuyen_khoa: str = Form(...),
     loai_dich_vu: str = Form(...),
@@ -54,9 +120,44 @@ async def create_service_api(
         ten_dich_vu=ten_dich_vu,
         chuyen_khoa=chuyen_khoa,
         loai_dich_vu=loai_dich_vu,
-        gia_goc=gia_goc
+        gia_goc=gia_goc,
+        ma_dich_vu=ma_dich_vu
     )
     return result
+
+
+@router.put("/services/{ma_dich_vu}/price", response_model=ResponseModel)
+async def update_service_price_api(ma_dich_vu: str, request: ServicePriceRequest):
+    return await update_service_price(ma_dich_vu, request.GiaGoc)
+
+
+@router.delete("/services/{ma_dich_vu}", response_model=ResponseModel)
+async def delete_service_api(ma_dich_vu: str):
+    return await delete_service(ma_dich_vu)
+
+
+@router.post("/branch-services", response_model=ResponseModel)
+async def upsert_branch_service_api(request: BranchServiceRequest):
+    return await upsert_branch_service(
+        ma_chi_nhanh=request.MaChiNhanh,
+        ma_dich_vu=request.MaDichVu,
+        slot_gioi_han=request.SlotGioiHan,
+    )
+
+
+@router.put("/branch-services/{ma_cau_hinh}/slot", response_model=ResponseModel)
+async def update_branch_service_slot_api(ma_cau_hinh: str, request: BranchServiceSlotRequest):
+    return await update_branch_service_slot(ma_cau_hinh, request.SlotGioiHan)
+
+
+@router.put("/branch-services/{ma_cau_hinh}/status", response_model=ResponseModel)
+async def update_branch_service_status_api(ma_cau_hinh: str, request: BranchServiceStatusRequest):
+    return await update_branch_service_status(ma_cau_hinh, request.TrangThai)
+
+
+@router.delete("/branch-services/{ma_cau_hinh}", response_model=ResponseModel)
+async def delete_branch_service_api(ma_cau_hinh: str):
+    return await delete_branch_service(ma_cau_hinh)
 
 @router.post(
     "/doctor-schedules/create",
