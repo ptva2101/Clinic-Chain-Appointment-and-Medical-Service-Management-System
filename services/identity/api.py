@@ -1,12 +1,14 @@
 """Identity HTTP contract; schemas become the service's OpenAPI document."""
 
+import hmac
+import os
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 from uuid import uuid4
 
 import aiomysql
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -96,6 +98,22 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=6, max_length=256)
 
 
+class ActiveStaffRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["doctor", "letan", "xnv"]
+    subject_ids: list[str] = Field(min_length=1, max_length=500)
+
+
+class ActiveStaffResponse(BaseModel):
+    subject_ids: list[str]
+
+
+def require_registry_service(x_service_token: Annotated[str | None, Header()] = None) -> None:
+    expected = os.getenv("REGISTRY_INTERNAL_TOKEN", "")
+    if not expected or not x_service_token or not hmac.compare_digest(expected, x_service_token):
+        raise HTTPException(status_code=401, detail="Internal service authentication required")
+
+
 def get_repository(request: Request) -> IdentityRepository:
     return IdentityRepository(request.app.state.database)
 
@@ -163,6 +181,13 @@ def require_admin(account: CurrentAccount) -> dict:
 
 
 AdminAccount = Annotated[dict, Depends(require_admin)]
+
+
+@router.post("/internal/active-staff", response_model=ActiveStaffResponse,
+             dependencies=[Depends(require_registry_service)])
+async def active_staff(body: ActiveStaffRequest, repository: Repository) -> ActiveStaffResponse:
+    active = await repository.active_subject_ids(body.role, list(set(body.subject_ids)))
+    return ActiveStaffResponse(subject_ids=active)
 
 
 def tokens_for(account: dict, raw_refresh: str) -> TokenResponse:

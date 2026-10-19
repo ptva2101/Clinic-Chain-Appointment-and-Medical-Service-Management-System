@@ -22,6 +22,11 @@ class MemoryIdentity:
 
 
 class MemoryRegistry:
+    active_doctors = {"BS900"}
+
+    async def active_doctor_codes(self, codes):
+        return codes & self.active_doctors
+
     async def booking_config(self, code):
         if code != CONFIG["MaCauHinh"]:
             raise InvalidScheduleReference("Branch/service configuration not found")
@@ -133,6 +138,19 @@ def test_availability_hold_idempotency_and_capacity(client):
     assert http.get(f"{base}/availability", params=query).json()["available"] == 1
     assert http.post(f"{base}/holds", json=payload(idempotency_key="request-003"),
                      headers={"Authorization": "Bearer patient-b"}).status_code == 200
+
+
+def test_locked_doctor_is_hidden_and_cannot_be_booked(client, monkeypatch):
+    http, _store = client
+    monkeypatch.setattr(MemoryRegistry, "active_doctors", set())
+    base = "/api/v1/scheduling"
+    query = {"config_code": "CH_HN_KHAM", "date": payload()["date"], "shift": 1}
+    available = http.get(f"{base}/availability", params=query)
+    assert available.status_code == 200
+    assert available.json()["doctors"] == []
+    assert available.json()["available"] == 0
+    assert http.post(f"{base}/holds", json=payload(),
+                     headers={"Authorization": "Bearer patient-a"}).status_code == 409
 
 
 def test_internal_confirmation_and_expiry(client):

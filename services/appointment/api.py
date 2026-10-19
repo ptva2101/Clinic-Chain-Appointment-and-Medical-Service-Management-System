@@ -42,6 +42,18 @@ class AppointmentResponse(BaseModel):
     updated_at: datetime
 
 
+class PatientNotification(BaseModel):
+    id: str
+    appointment_id: str | None
+    content: str
+    read: bool
+    created_at: datetime
+
+
+class MarkReadResponse(BaseModel):
+    updated_count: int
+
+
 def response(row: dict) -> AppointmentResponse:
     return AppointmentResponse(
         id=row["id"], hold_id=row["hold_id"], patient_id=row["patient_id"],
@@ -145,6 +157,21 @@ async def book(
 async def my_appointments(repository: Repository, account: Account) -> list[AppointmentResponse]:
     require_role(account, "patient")
     return [response(row) for row in await repository.list(patient_id=account["subject_id"])]
+
+
+@router.get("/notifications/me", response_model=list[PatientNotification])
+async def my_notifications(repository: Repository, account: Account) -> list[PatientNotification]:
+    require_role(account, "patient")
+    return [PatientNotification(
+        id=row["id"], appointment_id=row["appointment_id"], content=row["content"],
+        read=bool(row["is_read"]), created_at=row["created_at"],
+    ) for row in await repository.list_notifications(account["id"])]
+
+
+@router.post("/notifications/mark-read", response_model=MarkReadResponse)
+async def mark_my_notifications_read(repository: Repository, account: Account) -> MarkReadResponse:
+    require_role(account, "patient")
+    return MarkReadResponse(updated_count=await repository.mark_notifications_read(account["id"]))
 
 
 @router.get("/doctor/me", response_model=list[AppointmentResponse])

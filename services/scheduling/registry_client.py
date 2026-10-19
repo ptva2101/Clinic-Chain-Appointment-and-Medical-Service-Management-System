@@ -15,6 +15,26 @@ class InvalidScheduleReference(Exception):
 
 
 class RegistryClient:
+    async def active_doctor_codes(self, codes: set[str]) -> set[str]:
+        if not codes:
+            return set()
+        base = os.getenv("REGISTRY_INTERNAL_URL", "http://registry:8000").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{base}/api/v1/registry/catalog/doctors")
+        except httpx.RequestError as exc:
+            raise RegistryUnavailable("Registry service is unavailable") from exc
+        if response.status_code != 200:
+            raise RegistryUnavailable("Registry could not verify active doctors")
+        try:
+            doctors = response.json()
+            if not isinstance(doctors, list):
+                raise ValueError("Invalid doctor list")
+            return {row["MaBacSi"] for row in doctors if isinstance(row, dict)
+                    and row.get("MaBacSi") in codes and row.get("TrangThai") == "active"}
+        except (ValueError, TypeError, KeyError) as exc:
+            raise RegistryUnavailable("Registry returned invalid doctor data") from exc
+
     async def booking_config(self, code: str) -> dict:
         base = os.getenv("REGISTRY_INTERNAL_URL", "http://registry:8000").rstrip("/")
         try:
@@ -42,6 +62,9 @@ class RegistryClient:
 
     async def verify_references(self, token: str, doctor_codes: set[str],
                                 branch_codes: set[str]) -> None:
+        active = await self.active_doctor_codes(doctor_codes)
+        if doctor_codes - active:
+            raise InvalidScheduleReference("Doctor account is inactive or not linked")
         base = os.getenv("REGISTRY_INTERNAL_URL", "http://registry:8000").rstrip("/")
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
@@ -51,7 +74,8 @@ class RegistryClient:
                 branches = branches_response.json()
                 if not isinstance(branches, list):
                     raise RegistryUnavailable("Registry returned an invalid branch catalogue")
-                known = {branch.get("MaChiNhanh") for branch in branches if isinstance(branch, dict)}
+                known = {branch.get("MaChiNhanh") for branch in branches
+                         if isinstance(branch, dict) and branch.get("TrangThai", "active") == "active"}
                 if not branch_codes <= known:
                     raise InvalidScheduleReference("Branch does not exist in Registry")
                 for doctor_code in doctor_codes:

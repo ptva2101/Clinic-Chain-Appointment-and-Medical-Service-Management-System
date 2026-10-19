@@ -93,6 +93,11 @@ class MemoryIdentityRepository:
     async def list_accounts(self, limit, offset, role):
         return [a for a in self.accounts.values() if role is None or a["role"] == role][offset:offset + limit]
 
+    async def active_subject_ids(self, role, subject_ids):
+        return [a["subject_id"] for a in self.accounts.values()
+                if a["role"] == role and a["is_active"] and not a["registration_pending"]
+                and a["subject_id"] in subject_ids]
+
     async def record_login_failure(self, account_id):
         account = self.accounts[account_id]
         account["failed_attempts"] += 1
@@ -204,6 +209,28 @@ def test_login_refresh_rotation_logout_and_me(client):
     assert client.post("/api/v1/identity/logout", json={"refresh_token": refreshed.json()["refresh_token"]}).status_code == 204
     assert client.post("/api/v1/identity/refresh", json={"refresh_token": refreshed.json()["refresh_token"]}).status_code == 401
     assert client.get("/api/v1/identity/me").status_code == 401
+
+
+def test_internal_active_staff_excludes_locked_accounts(client, monkeypatch):
+    monkeypatch.setenv("REGISTRY_INTERNAL_TOKEN", "internal-test-secret")
+    path = "/api/v1/identity/internal/active-staff"
+    body = {"role": "doctor", "subject_ids": ["BS_ACTIVE", "BS_LOCKED"]}
+    assert client.post(path, json=body).status_code == 401
+    assert client.post(path, json=body, headers={"X-Service-Token": "wrong"}).status_code == 401
+    admin = {"Authorization": f"Bearer {login(client).json()['access_token']}"}
+    for code in body["subject_ids"]:
+        response = client.post("/api/v1/identity/accounts", headers=admin, json={
+            "role": "doctor", "username": code, "subject_id": code,
+            "full_name": code, "password": "123456",
+        })
+        assert response.status_code == 201
+        if code == "BS_LOCKED":
+            assert client.patch(
+                f"/api/v1/identity/accounts/{response.json()['id']}/disable", headers=admin
+            ).status_code == 204
+    response = client.post(path, json=body, headers={"X-Service-Token": "internal-test-secret"})
+    assert response.status_code == 200
+    assert response.json() == {"subject_ids": ["BS_ACTIVE"]}
 
 
 def test_admin_provision_and_disable_account(client):

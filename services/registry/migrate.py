@@ -17,6 +17,12 @@ async def migrate() -> None:
                     for statement in schema.split(";"):
                         if statement.strip():
                             await cursor.execute(statement)
+                    for table in ("branches", "medical_services"):
+                        await cursor.execute(f"SHOW COLUMNS FROM {table} LIKE 'active'")
+                        if await cursor.fetchone() is None:
+                            await cursor.execute(
+                                f"ALTER TABLE {table} ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE"
+                            )
                     await cursor.execute("SHOW COLUMNS FROM staff_profiles LIKE 'identity_account_id'")
                     identity_column = await cursor.fetchone()
                     if identity_column["Null"] == "NO":

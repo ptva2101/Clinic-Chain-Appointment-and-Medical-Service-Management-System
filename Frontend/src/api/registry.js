@@ -4,6 +4,7 @@ export function catalogEndpoints() {
   return {
     branches: '/branches',
     services: '/services',
+    doctors: '/doctors',
     branchServices: '/branch-services',
   }
 }

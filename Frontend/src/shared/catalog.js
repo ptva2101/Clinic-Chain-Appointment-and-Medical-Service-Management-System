@@ -1,6 +1,7 @@
 export const EMPTY_CATALOG_DATA = {
   branches: [],
   services: [],
+  doctors: [],
   branchServices: [],
   diseases: [],
   medicines: [],

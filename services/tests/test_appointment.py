@@ -56,6 +56,7 @@ class MemoryScheduling:
 class MemoryAppointments:
     def __init__(self):
         self.rows = {}
+        self.notifications = []
 
     async def get(self, appointment_id):
         return self.rows.get(appointment_id)
@@ -85,8 +86,26 @@ class MemoryAppointments:
             raise AppointmentNotFound("Appointment not found")
         if row["status"] != next_status and row["status"] not in expected:
             raise AppointmentConflict("Invalid status change")
+        changed = row["status"] != next_status
         row["status"] = next_status
+        if changed and next_status in ("confirmed", "cancelled"):
+            self.notifications.append({
+                "id": str(uuid4()), "appointment_id": appointment_id,
+                "patient_account_id": row["patient_account_id"],
+                "content": "Appointment " + next_status,
+                "is_read": False, "created_at": datetime.now(),
+            })
         return row
+
+    async def list_notifications(self, account_id):
+        return [row for row in self.notifications if row["patient_account_id"] == account_id]
+
+    async def mark_notifications_read(self, account_id):
+        unread = [row for row in self.notifications if row["patient_account_id"] == account_id
+                  and not row["is_read"]]
+        for row in unread:
+            row["is_read"] = True
+        return len(unread)
 
     async def list(self, patient_id=None, doctor_code=None, from_date=None,
                    to_date=None, status=None):
@@ -138,6 +157,29 @@ def test_booking_lists_and_cancel(client):
     assert http.post(f"{base}/{appointment_id}/cancel", headers=patient).status_code == 200
     assert http.post(base, json=body, headers=patient).status_code == 409
     assert base in http.get("/openapi.json").json()["paths"]
+
+
+def test_notifications_are_private_and_read_state_persists(client):
+    http, repository, _scheduling = client
+    base = "/api/v1/appointments"
+    patient_a = {"Authorization": "Bearer patient-a"}
+    patient_b = {"Authorization": "Bearer patient-b"}
+    assert http.get(f"{base}/notifications/me").status_code == 401
+    assert http.get(f"{base}/notifications/me", headers={"Authorization": "Bearer admin"}).status_code == 403
+    created = http.post(base, json=booking_body(), headers=patient_a).json()
+    notices = http.get(f"{base}/notifications/me", headers=patient_a).json()
+    assert len(notices) == 1 and notices[0]["read"] is False
+    assert notices[0]["appointment_id"] == created["id"]
+    assert http.get(f"{base}/notifications/me", headers=patient_b).json() == []
+    assert http.post(f"{base}/notifications/mark-read", headers=patient_b).json() == {"updated_count": 0}
+    assert http.post(f"{base}/notifications/mark-read", headers=patient_a).json() == {"updated_count": 1}
+    assert http.get(f"{base}/notifications/me", headers=patient_a).json()[0]["read"] is True
+    assert http.post(f"{base}/notifications/mark-read", headers=patient_a).json() == {"updated_count": 0}
+    http.post(f"{base}/{created['id']}/cancel", headers=patient_a)
+    assert len(repository.notifications) == 2
+    assert sum(notice["read"] is False for notice in http.get(
+        f"{base}/notifications/me", headers=patient_a
+    ).json()) == 1
 
 
 def test_retry_uncertain_confirmation_and_rejected_hold(client):

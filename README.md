@@ -10,6 +10,8 @@ Nếu cần **đúng dữ liệu trên máy xuất**, nhận file dump qua kênh
 
 Thành viên mới có thể làm lần lượt theo [hướng dẫn clone, import dữ liệu và chạy toàn hệ thống](docs/team-setup.md).
 
+Nhóm 2 người có thể theo dõi phần đã làm và các task còn lại trong [lộ trình từ chuyển đổi đến nghiệm thu](docs/roadmap-2-person.md).
+
 ```powershell
 git clone https://github.com/ptva2101/Clinic-Chain-Appointment-and-Medical-Service-Management-System.git
 cd Clinic-Chain-Appointment-and-Medical-Service-Management-System

@@ -100,16 +100,15 @@ export default function App() {
   }
 
   const markPatientNotificationsRead = async (maBenhAn) => {
+    if (!identityTokens?.access_token) return
     try {
-      const response = await persistPatientNotificationsRead(maBenhAn)
-      const result = await response.json()
-
-      if (!response.ok || !result?.success) {
-        throw new Error(result?.message || 'Không thể đánh dấu thông báo đã đọc.')
-      }
+      const response = await persistPatientNotificationsRead(identityTokens.access_token)
+      if (!response.ok) throw new Error('Không thể đánh dấu thông báo đã đọc.')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể đánh dấu thông báo đã đọc.'
       console.warn('PATIENT_NOTIFICATIONS_MARK_READ_FAILED', message)
+      showNotification(message, 'error')
+      return
     }
 
     setNotifications((current) =>
@@ -169,6 +168,7 @@ export default function App() {
       console.info('CATALOG_LOADED', {
         branches: nextCatalog.branches.length,
         services: nextCatalog.services.length,
+        doctors: nextCatalog.doctors.length,
         branchServices: nextCatalog.branchServices.length,
         diseases: nextCatalog.diseases.length,
         medicines: nextCatalog.medicines.length,
@@ -381,6 +381,7 @@ export default function App() {
 	        notifications={notifications}
 	        addPatientNotifications={addPatientNotifications}
 	        onMarkNotificationsRead={markPatientNotificationsRead}
+	        identityAccessToken={identityTokens?.access_token}
 	        catalogData={catalogData}
 	      />,
 	    )

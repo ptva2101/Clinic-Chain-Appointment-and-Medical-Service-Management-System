@@ -109,7 +109,11 @@ async def availability(
 ) -> AvailabilityResponse:
     config = await find_config(registry, config_code)
     usage = await repository.availability(config_code, config["MaChiNhanh"], date, shift)
-    doctors = usage["doctors"]
+    try:
+        active = await registry.active_doctor_codes(set(usage["doctors"]))
+    except RegistryUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    doctors = [code for code in usage["doctors"] if code in active]
     capacity = int(config["SlotGioiHan"])
     available = max(0, capacity - usage["held"] - usage["confirmed"])
     if (date < today_vietnam() or config["TrangThai"] != "active" or not doctors
@@ -129,6 +133,12 @@ async def create_hold(body: HoldCreate, repository: SlotStore, registry: Registr
     if body.date < today_vietnam():
         raise HTTPException(status_code=422, detail="Cannot reserve a past date")
     config = await find_config(registry, body.config_code)
+    try:
+        active = await registry.active_doctor_codes({body.doctor_code})
+    except RegistryUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if body.doctor_code not in active:
+        raise HTTPException(status_code=409, detail="Doctor account is inactive or not linked")
     try:
         ttl = int(os.getenv("SCHEDULING_HOLD_TTL_SECONDS", "600"))
         if not 60 <= ttl <= 1800:

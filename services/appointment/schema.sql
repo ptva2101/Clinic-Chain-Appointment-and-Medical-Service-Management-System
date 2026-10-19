@@ -22,3 +22,17 @@ CREATE TABLE IF NOT EXISTS appointments (
         status IN ('pending', 'confirmed', 'cancel_pending', 'cancelled', 'failed', 'historical')
     )
 );
+
+CREATE TABLE IF NOT EXISTS patient_notifications (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    appointment_id CHAR(36) NULL,
+    patient_account_id CHAR(36) NOT NULL,
+    patient_id VARCHAR(128) NOT NULL,
+    event VARCHAR(32) NOT NULL,
+    content VARCHAR(500) NOT NULL,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uq_notification_appointment_event (appointment_id, event),
+    KEY ix_notification_patient (patient_account_id, created_at),
+    CONSTRAINT fk_notification_appointment FOREIGN KEY (appointment_id) REFERENCES appointments(id)
+);

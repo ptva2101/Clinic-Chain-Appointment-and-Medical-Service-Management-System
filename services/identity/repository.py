@@ -144,6 +144,22 @@ class IdentityRepository:
             await connection.rollback()
             return accounts
 
+    async def active_subject_ids(self, role: str, subject_ids: list[str]) -> list[str]:
+        if not subject_ids:
+            return []
+        placeholders = ", ".join(["%s"] * len(subject_ids))
+        pool = await self.database.pool()
+        async with pool.acquire() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    "SELECT subject_id FROM accounts WHERE role = %s AND is_active = TRUE "
+                    "AND registration_pending = FALSE AND subject_id IN (" + placeholders + ")",
+                    (role, *subject_ids),
+                )
+                rows = await cursor.fetchall()
+                await connection.rollback()
+                return [row["subject_id"] for row in rows]
+
     async def create_account(self, account_id: str, role: str, username: str, subject_id: str | None, password_hash: str) -> dict:
         pool = await self.database.pool()
         async with pool.acquire() as connection:

@@ -1,5 +1,7 @@
 """Appointment-owned persistence and local saga state transitions."""
 
+from __future__ import annotations
+
 from datetime import date
 from uuid import uuid4
 
@@ -74,6 +76,37 @@ class AppointmentRepository:
                 await connection.rollback()
                 return rows
 
+    async def list_notifications(self, account_id: str) -> list[dict]:
+        pool = await self.database.pool()
+        async with pool.acquire() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    "SELECT id, appointment_id, content, is_read, created_at "
+                    "FROM patient_notifications WHERE patient_account_id = %s "
+                    "ORDER BY created_at DESC, id DESC LIMIT 200",
+                    (account_id,),
+                )
+                rows = await cursor.fetchall()
+                await connection.rollback()
+                return rows
+
+    async def mark_notifications_read(self, account_id: str) -> int:
+        pool = await self.database.pool()
+        async with pool.acquire() as connection:
+            try:
+                async with connection.cursor() as cursor:
+                    await cursor.execute(
+                        "UPDATE patient_notifications SET is_read = TRUE "
+                        "WHERE patient_account_id = %s AND is_read = FALSE",
+                        (account_id,),
+                    )
+                    changed = cursor.rowcount
+                await connection.commit()
+                return changed
+            except Exception:
+                await connection.rollback()
+                raise
+
     async def reserve(self, hold: dict, account: dict) -> dict:
         pool = await self.database.pool()
         appointment_id = str(uuid4())
@@ -129,6 +162,18 @@ class AppointmentRepository:
                         "UPDATE appointments SET status = %s WHERE id = %s",
                         (next_status, appointment_id),
                     )
+                    if next_status in ("confirmed", "cancelled") and row["patient_account_id"]:
+                        content = (
+                            "Lịch hẹn của bạn đã được xác nhận."
+                            if next_status == "confirmed" else "Lịch hẹn của bạn đã được hủy."
+                        )
+                        await cursor.execute(
+                            "INSERT INTO patient_notifications "
+                            "(id, appointment_id, patient_account_id, patient_id, event, content) "
+                            "VALUES (%s, %s, %s, %s, %s, %s)",
+                            (str(uuid4()), appointment_id, row["patient_account_id"],
+                             row["patient_id"], next_status, content),
+                        )
                     await cursor.execute(
                         f"SELECT {COLUMNS} FROM appointments WHERE id = %s", (appointment_id,)
                     )

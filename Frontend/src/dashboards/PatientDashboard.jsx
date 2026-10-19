@@ -17,6 +17,7 @@ export default function PatientDashboard({
   notifications = [],
   addPatientNotifications,
   onMarkNotificationsRead,
+  identityAccessToken,
   catalogData = EMPTY_CATALOG_DATA,
 }) {
   const [activeMenu, setActiveMenu] = useState('booking')
@@ -414,31 +415,22 @@ export default function PatientDashboard({
     { KyTuDauBHYT: 'DN', DoiTuongChinhSach: 'Người lao động doanh nghiệp', TyLeHuong: 0.8 },
   ]
 
-  const effectiveBranches = catalogData?.branches || []
-  const effectiveServices = catalogData?.services || []
+  const effectiveBranches = (catalogData?.branches || []).filter((branch) => branch.TrangThai !== 'inactive')
+  const effectiveServices = (catalogData?.services || []).filter((service) => service.TrangThai !== 'inactive')
+  const effectiveStaffList = catalogData?.doctors || []
+  const activeDoctorCodes = new Set(effectiveStaffList.map((doctor) => doctor.MaBacSi))
   const effectiveDiseases = catalogData?.diseases?.length ? catalogData.diseases : diseases
   const effectiveMedicines = catalogData?.medicines?.length ? catalogData.medicines : medicines
   const effectiveBhytCategories = catalogData?.bhyt?.length ? catalogData.bhyt : bhytCategories
-  const normalizedCatalogSchedules = (catalogData?.doctorSchedules || []).map((schedule) => ({
-    ...schedule,
-    TrangThai: schedule.TrangThai || 'Đang hoạt động',
-  }))
+  const normalizedCatalogSchedules = (catalogData?.doctorSchedules || [])
+    .filter((schedule) => activeDoctorCodes.has(schedule.MaBacSi))
+    .map((schedule) => ({
+      ...schedule,
+      TrangThai: schedule.TrangThai || 'Đang hoạt động',
+    }))
   const effectiveDoctorSchedules = normalizedCatalogSchedules
   const allKnownServices = effectiveServices
   const allKnownBranches = effectiveBranches
-  const derivedDoctors = Object.values(
-    effectiveDoctorSchedules.reduce((doctorMap, schedule) => {
-      if (!schedule.MaBacSi || doctorMap[schedule.MaBacSi]) return doctorMap
-      doctorMap[schedule.MaBacSi] = {
-        MaBacSi: schedule.MaBacSi,
-        HoTen: schedule.TenBacSi || schedule.HoTen || schedule.MaBacSi,
-        ChuyenKhoa: schedule.ChuyenKhoa || '',
-        SDT: schedule.SDT || '',
-      }
-      return doctorMap
-    }, {}),
-  )
-  const effectiveStaffList = derivedDoctors
   const effectiveBranchServices = (catalogData?.branchServices || [])
     .filter((config) => config.TrangThai === 'active')
     .map((config) => {
@@ -505,24 +497,24 @@ export default function PatientDashboard({
   }
 
   const loadPatientNotifications = async () => {
-    if (!patient.MaBenhAn) return
+    if (!patient.MaBenhAn || !identityAccessToken) return
 
     try {
-      const response = await getPatientNotifications(patient.MaBenhAn)
+      const response = await getPatientNotifications(identityAccessToken)
       const result = await response.json()
 
-      if (!response.ok || !result?.success) {
-        throw new Error(result?.message || 'Không thể tải thông báo bệnh nhân.')
+      if (!response.ok || !Array.isArray(result)) {
+        throw new Error(result?.detail || 'Không thể tải thông báo bệnh nhân.')
       }
 
       addPatientNotifications?.(
-        (result.data || []).map((item) => ({
-          MaThongBao: item.MaThongBao,
+        result.map((item) => ({
+          MaThongBao: item.id,
           MaBenhAn: patient.MaBenhAn,
-          MaLichHen: item.MaLichHen,
-          NoiDung: item.NoiDung,
-          ThoiGianGui: item.ThoiGianGui,
-          read: Boolean(item.DaDoc),
+          MaLichHen: item.appointment_id,
+          NoiDung: item.content,
+          ThoiGianGui: item.created_at,
+          read: item.read,
         })),
       )
     } catch (error) {
