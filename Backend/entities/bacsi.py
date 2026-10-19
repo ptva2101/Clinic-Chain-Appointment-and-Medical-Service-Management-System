@@ -9,6 +9,7 @@ class BacSi:
 	ChuyenKhoa: str
 	SDT: str
 	MatKhau: str
+	TrangThai: str = "Đang hoạt động"
 
 	__tablename__ = "BAC_SI"
 
@@ -20,4 +21,5 @@ class BacSi:
 			ChuyenKhoa=d.get("ChuyenKhoa"),
 			SDT=d.get("SDT"),
 			MatKhau=d.get("MatKhau"),
+			TrangThai=d.get("TrangThai") or "Đang hoạt động",
 		)

@@ -15,6 +15,7 @@ import { catalogEndpoints, fetchCatalog } from './api/registry.js'
 import { changeAccountPassword, getCurrentAccount, loginAccount, logoutAccount, refreshAccount, registerAccount } from './api/identity.js'
 import { getStaffProfile } from './api/staffProfile.js'
 import { listDoctorSchedules } from './api/scheduling.js'
+import { markPatientNotificationsRead as persistPatientNotificationsRead } from './api/appointment.js'
 import './App.css'
 
 const STAFF_ROLES = new Set(['doctor', 'letan', 'xnv'])
@@ -98,7 +99,19 @@ export default function App() {
     })
   }
 
-  const markPatientNotificationsRead = (maBenhAn) => {
+  const markPatientNotificationsRead = async (maBenhAn) => {
+    try {
+      const response = await persistPatientNotificationsRead(maBenhAn)
+      const result = await response.json()
+
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.message || 'Không thể đánh dấu thông báo đã đọc.')
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể đánh dấu thông báo đã đọc.'
+      console.warn('PATIENT_NOTIFICATIONS_MARK_READ_FAILED', message)
+    }
+
     setNotifications((current) =>
       current.map((notification) =>
         notification.MaBenhAn === maBenhAn || notification.MaBenhNhan === maBenhAn

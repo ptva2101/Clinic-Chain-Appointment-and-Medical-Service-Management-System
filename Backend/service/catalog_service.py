@@ -38,7 +38,7 @@ async def get_branches():
             TenChiNhanh,
             DiaChi,
             SDT
-        FROM CHI_NHANH
+        FROM chi_nhanh
         ORDER BY MaChiNhanh
         """
     )
@@ -60,7 +60,7 @@ async def get_services():
             LoaiDichVu,
             GiaGoc,
             GiaGoc AS GiaDichVu
-        FROM DICH_VU
+        FROM dich_vu
         ORDER BY LoaiDichVu, ChuyenKhoa, MaDichVu
         """
     )
@@ -72,9 +72,44 @@ async def get_services():
     }
 
 
-async def get_branch_services():
+async def get_doctors():
+    has_status = await _table_has_column("bac_si", "TrangThai")
+    status_select = (
+        "COALESCE(TrangThai, 'Đang hoạt động') AS TrangThai"
+        if has_status
+        else "'Đang hoạt động' AS TrangThai"
+    )
+
     rows = await _fetch_all(
+        f"""
+        SELECT
+            MaBacSi,
+            HoTen,
+            ChuyenKhoa,
+            SDT,
+            {status_select}
+        FROM bac_si
+        ORDER BY MaBacSi
         """
+    )
+
+    return {
+        "success": True,
+        "message": "Lấy danh sách bác sĩ thành công.",
+        "data": rows,
+    }
+
+
+async def get_branch_services():
+    has_status = await _table_has_column("chi_nhanh_dich_vu", "TrangThai")
+    status_select = (
+        "CNDV.TrangThai"
+        if has_status
+        else "'Đang cung cấp' AS TrangThai"
+    )
+
+    rows = await _fetch_all(
+        f"""
         SELECT
             CNDV.MaCauHinh,
             CNDV.MaChiNhanh,
@@ -84,11 +119,12 @@ async def get_branch_services():
             DV.ChuyenKhoa,
             DV.LoaiDichVu,
             DV.GiaGoc,
-            CNDV.SlotGioiHan
-        FROM CHI_NHANH_DICH_VU CNDV
-        JOIN CHI_NHANH CN
+            CNDV.SlotGioiHan,
+            {status_select}
+        FROM chi_nhanh_dich_vu CNDV
+        JOIN chi_nhanh CN
             ON CNDV.MaChiNhanh = CN.MaChiNhanh
-        JOIN DICH_VU DV
+        JOIN dich_vu DV
             ON CNDV.MaDichVu = DV.MaDichVu
         ORDER BY CNDV.MaChiNhanh, DV.LoaiDichVu, DV.ChuyenKhoa, CNDV.MaDichVu
         """
@@ -107,7 +143,7 @@ async def get_diseases():
         SELECT
             MaBenh,
             TenBenh
-        FROM BENH
+        FROM benh
         ORDER BY MaBenh
         """
     )
@@ -131,7 +167,7 @@ async def get_medicines():
             MaThuoc,
             TenThuoc,
             DonViTinh
-        FROM THUOC
+        FROM thuoc
         ORDER BY TenThuoc
         """
     )
@@ -150,7 +186,7 @@ async def get_bhyt_categories():
             KyTuDauBHYT,
             DoiTuongChinhSach,
             TyLeHuong
-        FROM DANH_MUC_BHYT
+        FROM danh_muc_bhyt
         ORDER BY KyTuDauBHYT
         """
     )
@@ -174,11 +210,17 @@ async def get_doctor_schedules(from_date: str = None, to_date: str = None):
         where_clauses.append("LTR.NgayTruc <= %s")
         params.append(to_date)
 
+    if await _table_has_column("bac_si", "TrangThai"):
+        where_clauses.append("COALESCE(BS.TrangThai, 'Đang hoạt động') = 'Đang hoạt động'")
+
+    if await _table_has_column("lich_truc", "TrangThai"):
+        where_clauses.append("COALESCE(LTR.TrangThai, 'Đang hoạt động') = 'Đang hoạt động'")
+
     where_sql = ""
     if where_clauses:
         where_sql = "WHERE " + " AND ".join(where_clauses)
 
-    has_schedule_status = await _table_has_column("LICH_TRUC", "TrangThai")
+    has_schedule_status = await _table_has_column("lich_truc", "TrangThai")
     status_select = (
         "COALESCE(LTR.TrangThai, 'Đang hoạt động') AS TrangThai"
         if has_schedule_status
@@ -199,10 +241,10 @@ async def get_doctor_schedules(from_date: str = None, to_date: str = None):
             LTR.NgayTruc,
             LTR.CaTruc,
             {status_select}
-        FROM LICH_TRUC LTR
-        JOIN BAC_SI BS
+        FROM lich_truc LTR
+        JOIN bac_si BS
             ON LTR.MaBacSi = BS.MaBacSi
-        JOIN CHI_NHANH CN
+        JOIN chi_nhanh CN
             ON LTR.MaChiNhanh = CN.MaChiNhanh
         {where_sql}
         ORDER BY LTR.NgayTruc, LTR.CaTruc, LTR.MaChiNhanh, LTR.MaBacSi

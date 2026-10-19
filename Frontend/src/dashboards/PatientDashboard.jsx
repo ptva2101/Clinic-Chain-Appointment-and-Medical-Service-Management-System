@@ -439,7 +439,9 @@ export default function PatientDashboard({
     }, {}),
   )
   const effectiveStaffList = derivedDoctors
-  const effectiveBranchServices = (catalogData?.branchServices || []).map((config) => {
+  const effectiveBranchServices = (catalogData?.branchServices || [])
+    .filter((config) => config.TrangThai === 'active')
+    .map((config) => {
     const branch = effectiveBranches.find((item) => item.MaChiNhanh === config.MaChiNhanh)
     const service = effectiveServices.find((item) => item.MaDichVu === config.MaDichVu)
     return {
@@ -454,7 +456,7 @@ export default function PatientDashboard({
         LoaiDichVu: service?.LoaiDichVu || '',
         GiaGoc: Number(service?.GiaGoc ?? 0),
     }
-  })
+    })
   const allKnownBranchServices = effectiveBranchServices
   const allKnownDoctorSchedules = effectiveDoctorSchedules
 
@@ -520,7 +522,7 @@ export default function PatientDashboard({
           MaLichHen: item.MaLichHen,
           NoiDung: item.NoiDung,
           ThoiGianGui: item.ThoiGianGui,
-          read: false,
+          read: Boolean(item.DaDoc),
         })),
       )
     } catch (error) {

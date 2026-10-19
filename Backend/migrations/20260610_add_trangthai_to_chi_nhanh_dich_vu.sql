@@ -1,0 +1,6 @@
+ALTER TABLE CHI_NHANH_DICH_VU
+ADD COLUMN TrangThai VARCHAR(30) NOT NULL DEFAULT 'Đang cung cấp';
+
+UPDATE CHI_NHANH_DICH_VU
+SET TrangThai = 'Đang cung cấp'
+WHERE TrangThai IS NULL OR TrangThai = '';

@@ -98,3 +98,8 @@ async def get_medical_history_api(ma_benh_an: str):
 @router.get("/notifications", response_model=ResponseModel)
 async def get_notifications_api(ma_benh_an: str):
     return await receive_notification(ma_benh_an)
+
+
+@router.post("/notifications/mark-read", response_model=ResponseModel)
+async def mark_notifications_read_api(ma_benh_an: str = Form(...)):
+    return await mark_notifications_read(ma_benh_an)
