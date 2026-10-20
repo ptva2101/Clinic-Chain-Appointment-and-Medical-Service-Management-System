@@ -6,7 +6,7 @@ import { checkIn, getCheckinAppointments, getWaitingList, searchCheckinAppointme
 import TablePagination from './TablePagination.jsx'
 import { getCurrentPage, getPageRows, TABLE_PAGE_SIZE } from './tablePagination.js'
 
-export default function ReceptionistDashboard({ user, onLogout, showNotification, catalogData = EMPTY_CATALOG_DATA }) {
+export default function ReceptionistDashboard({ user, identityAccessToken, onLogout, showNotification, catalogData = EMPTY_CATALOG_DATA }) {
   const TODAY = getTodayDateKey()
   const [activeQueueTab, setActiveQueueTab] = useState('prebooked')
   const [prebookedPage, setPrebookedPage] = useState(0)
@@ -17,8 +17,8 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
   const [checkinRows, setCheckinRows] = useState([])
   const [queueRows, setQueueRows] = useState([])
   const [searchRows, setSearchRows] = useState([])
-  const [hasLoadedCheckinRows, setHasLoadedCheckinRows] = useState(false)
-  const [hasLoadedQueueRows, setHasLoadedQueueRows] = useState(false)
+  const [hasLoadedCheckinRows, setHasLoadedCheckinRows] = useState(true)
+  const [hasLoadedQueueRows, setHasLoadedQueueRows] = useState(true)
   const [checkinRowsLoading, setCheckinRowsLoading] = useState(false)
   const [queueRowsLoading, setQueueRowsLoading] = useState(false)
   const [searchLoading, setSearchLoading] = useState(false)
@@ -29,450 +29,11 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
     setFeedback(message)
     showNotification?.(message, type)
   }
-  const [branches] = useState([
-    {
-      MaChiNhanh: 'CN_CG',
-      TenChiNhanh: 'Medicare - Cơ sở Cầu Giấy',
-      DiaChi: 'Số 1 Dịch Vọng Hậu, Cầu Giấy, Hà Nội',
-    },
-    {
-      MaChiNhanh: 'CN_HBT',
-      TenChiNhanh: 'Medicare - Cơ sở Hai Bà Trưng',
-      DiaChi: 'Số 99 Đại Cồ Việt, Hai Bà Trưng, Hà Nội',
-    },
-  ])
-  const [services] = useState([
-    { MaDichVu: 'DV_KHAM_NOI', TenDichVu: 'Khám Nội Tổng Quát', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 150000 },
-    { MaDichVu: 'DV_KHAM_GIA_DINH', TenDichVu: 'Khám Sức Khỏe Gia Đình', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 250000 },
-    { MaDichVu: 'DV_KHAM_LAO_KHOA', TenDichVu: 'Khám Tư Vấn Sức Khỏe Lão Khoa', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 180000 },
-    { MaDichVu: 'DV_KHAM_TIM_MACH', TenDichVu: 'Khám Sàng Lọc Tim Mạch - Huyết Áp', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 200000 },
-    { MaDichVu: 'DV_KHAM_TIEU_HOA', TenDichVu: 'Khám Tiêu Hóa - Gan Mật', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 180000 },
-    { MaDichVu: 'DV_KHAM_HO_HAP', TenDichVu: 'Khám Bệnh Lý Đường Hô Hấp', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 170000 },
-    { MaDichVu: 'DV_KHAM_NOI_TIET', TenDichVu: 'Khám Sàng Lọc Tiểu Đường & Nội Tiết', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 220000 },
-    { MaDichVu: 'DV_KHAM_DINH_DUONG', TenDichVu: 'Khám Tư Vấn Dinh Dưỡng Chuyên Sâu', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 150000 },
-    { MaDichVu: 'DV_KHAM_RANG', TenDichVu: 'Khám Răng Hàm Mặt Định Kỳ', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 200000 },
-    { MaDichVu: 'DV_LAY_CAO', TenDichVu: 'Lấy Cao Răng Và Đánh Bóng Thẩm Mỹ', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 150000 },
-    { MaDichVu: 'DV_KHAM_NIENG_RANG', TenDichVu: 'Khám Tư Vấn Chỉnh Nha/Niềng Răng', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 300000 },
-    { MaDichVu: 'DV_KHAM_IMPLANT', TenDichVu: 'Khám Tư Vấn Trồng Răng Implant', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 300000 },
-    { MaDichVu: 'DV_KHAM_TMH', TenDichVu: 'Khám Tai Mũi Họng Thông Thường', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 180000 },
-    { MaDichVu: 'DV_NOI_SOI_TMH', TenDichVu: 'Nội Soi Tai Mũi Họng Ống Mềm', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 250000 },
-    { MaDichVu: 'DV_KHAM_THINH_LUC', TenDichVu: 'Khám Đo Thính Lực Đơn Âm', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 200000 },
-  ])
-  const [staffList] = useState([
-    { MaBacSi: 'BS001', HoTen: 'Nguyễn Văn An', ChuyenKhoa: 'Nội tổng quát', SDT: '0911222333' },
-    { MaBacSi: 'BS002', HoTen: 'Lê Thị Bình', ChuyenKhoa: 'Răng hàm mặt', SDT: '0922333444' },
-    { MaBacSi: 'BS003', HoTen: 'Phạm Hoàng Long', ChuyenKhoa: 'Tai mũi họng', SDT: '0933444555' },
-    { MaBacSi: 'BS004', HoTen: 'Trần Trần Đức', ChuyenKhoa: 'Nội tổng quát', SDT: '0944555666' },
-    { MaBacSi: 'BS005', HoTen: 'Nguyễn Thị Minh', ChuyenKhoa: 'Nội tổng quát', SDT: '0912345678' },
-    { MaBacSi: 'BS006', HoTen: 'Phan Văn Khải', ChuyenKhoa: 'Răng hàm mặt', SDT: '0923456789' },
-    { MaBacSi: 'BS007', HoTen: 'Hoàng Lê Giang', ChuyenKhoa: 'Tai mũi họng', SDT: '0934567890' },
-    { MaBacSi: 'BS008', HoTen: 'Vũ Ngô Hùng', ChuyenKhoa: 'Răng hàm mặt', SDT: '0945678901' },
-    { MaBacSi: 'BS009', HoTen: 'Đỗ Thúy Hạnh', ChuyenKhoa: 'Nội tổng quát', SDT: '0913456789' },
-    { MaBacSi: 'BS010', HoTen: 'Bùi Chí Kiên', ChuyenKhoa: 'Răng hàm mặt', SDT: '0924567890' },
-    { MaBacSi: 'BS011', HoTen: 'Lý Thu Thảo', ChuyenKhoa: 'Tai mũi họng', SDT: '0935678901' },
-    { MaBacSi: 'BS012', HoTen: 'Đặng Quốc Bảo', ChuyenKhoa: 'Tai mũi họng', SDT: '0946789012' },
-    { MaBacSi: 'BS013', HoTen: 'Ngô Bảo Ngọc', ChuyenKhoa: 'Nội tổng quát', SDT: '0914567890' },
-    { MaBacSi: 'BS014', HoTen: 'Dương Văn Lâm', ChuyenKhoa: 'Răng hàm mặt', SDT: '0925678901' },
-    { MaBacSi: 'BS015', HoTen: 'Võ Thị Sáu', ChuyenKhoa: 'Tai mũi họng', SDT: '0936789012' },
-    { MaBacSi: 'BS016', HoTen: 'Tống Phước Hải', ChuyenKhoa: 'Nội tổng quát', SDT: '0947890123' },
-    { MaBacSi: 'BS017', HoTen: 'Đinh Công Mạnh', ChuyenKhoa: 'Nội tổng quát', SDT: '0915678901' },
-    { MaBacSi: 'BS018', HoTen: 'Mai Phương Thảo', ChuyenKhoa: 'Răng hàm mặt', SDT: '0926789012' },
-    { MaBacSi: 'BS019', HoTen: 'Hồ Tiến Dũng', ChuyenKhoa: 'Tai mũi họng', SDT: '0937890123' },
-    { MaBacSi: 'BS020', HoTen: 'Trịnh Đình Quang', ChuyenKhoa: 'Răng hàm mặt', SDT: '0948901234' },
-    { MaBacSi: 'BS021', HoTen: 'Vương Kim Chi', ChuyenKhoa: 'Nội tổng quát', SDT: '0916789012' },
-    { MaBacSi: 'BS022', HoTen: 'Đoàn Nguyên Đức', ChuyenKhoa: 'Răng hàm mặt', SDT: '0927890123' },
-    { MaBacSi: 'BS023', HoTen: 'Lưu Hồng Quang', ChuyenKhoa: 'Tai mũi họng', SDT: '0938901234' },
-  ])
-  const [patients] = useState([
-    {
-      MaBenhAn: 'BN001',
-      HoTen: 'Trần Quang Hải',
-      CCCD: '001095012345',
-      SDT: '0901234567',
-      DiaChi: 'Cầu Giấy, Hà Nội',
-      MaSoBHYT: 'DN4010123456789',
-      KyTuDauBHYT: 'DN',
-    },
-    {
-      MaBenhAn: 'BN002',
-      HoTen: 'Nguyễn Thị Mai',
-      CCCD: '001200054321',
-      SDT: '0907654321',
-      DiaChi: 'Hai Bà Trưng, Hà Nội',
-      MaSoBHYT: '',
-      KyTuDauBHYT: '',
-    },
-    {
-      MaBenhAn: 'BN003',
-      HoTen: 'Phạm Lê Minh',
-      CCCD: '001221098765',
-      SDT: '0911999888',
-      DiaChi: 'Đống Đa, Hà Nội',
-      MaSoBHYT: 'TE1010999888777',
-      KyTuDauBHYT: 'TE',
-    },
-    {
-      MaBenhAn: 'BN004',
-      HoTen: 'Lê Hoàng Nam',
-      CCCD: '001186000004',
-      SDT: '0904000004',
-      DiaChi: 'Nam Từ Liêm, Hà Nội',
-      MaSoBHYT: 'DN401000000004',
-      KyTuDauBHYT: 'DN',
-    },
-    {
-      MaBenhAn: 'BN005',
-      HoTen: 'Đỗ Minh Châu',
-      CCCD: '001187000005',
-      SDT: '0905000005',
-      DiaChi: 'Thanh Xuân, Hà Nội',
-      MaSoBHYT: '',
-      KyTuDauBHYT: '',
-    },
-    {
-      MaBenhAn: 'BN006',
-      HoTen: 'Vũ Gia Hân',
-      CCCD: '001188000006',
-      SDT: '0906000006',
-      DiaChi: 'Ba Đình, Hà Nội',
-      MaSoBHYT: 'HT401000000006',
-      KyTuDauBHYT: 'HT',
-    },
-    {
-      MaBenhAn: 'BN007',
-      HoTen: 'Hoàng Đức Anh',
-      CCCD: '001189000007',
-      SDT: '0907000007',
-      DiaChi: 'Cầu Giấy, Hà Nội',
-      MaSoBHYT: 'DN401000000007',
-      KyTuDauBHYT: 'DN',
-    },
-    {
-      MaBenhAn: 'BN008',
-      HoTen: 'Phan Ngọc Linh',
-      CCCD: '001190000008',
-      SDT: '0908000008',
-      DiaChi: 'Đống Đa, Hà Nội',
-      MaSoBHYT: '',
-      KyTuDauBHYT: '',
-    },
-    {
-      MaBenhAn: 'BN009',
-      HoTen: 'Bùi Quang Huy',
-      CCCD: '001191000009',
-      SDT: '0909000009',
-      DiaChi: 'Long Biên, Hà Nội',
-      MaSoBHYT: 'DN401000000009',
-      KyTuDauBHYT: 'DN',
-    },
-    {
-      MaBenhAn: 'BN010',
-      HoTen: 'Đặng Khánh Vy',
-      CCCD: '001192000010',
-      SDT: '0910000010',
-      DiaChi: 'Hai Bà Trưng, Hà Nội',
-      MaSoBHYT: 'TE101000000010',
-      KyTuDauBHYT: 'TE',
-    },
-    {
-      MaBenhAn: 'BN011',
-      HoTen: 'Ngô Tuấn Kiệt',
-      CCCD: '001193000011',
-      SDT: '0911000011',
-      DiaChi: 'Hoàn Kiếm, Hà Nội',
-      MaSoBHYT: '',
-      KyTuDauBHYT: '',
-    },
-    {
-      MaBenhAn: 'BN012',
-      HoTen: 'Mai Phương Anh',
-      CCCD: '001194000012',
-      SDT: '0912000012',
-      DiaChi: 'Tây Hồ, Hà Nội',
-      MaSoBHYT: 'DN401000000012',
-      KyTuDauBHYT: 'DN',
-    },
-    {
-      MaBenhAn: 'BN013',
-      HoTen: 'Cao Nhật Minh',
-      CCCD: '001195000013',
-      SDT: '0913000013',
-      DiaChi: 'Hoàng Mai, Hà Nội',
-      MaSoBHYT: '',
-      KyTuDauBHYT: '',
-    },
-    {
-      MaBenhAn: 'BN014',
-      HoTen: 'Tạ Thu Trang',
-      CCCD: '001196000014',
-      SDT: '0914000014',
-      DiaChi: 'Hà Đông, Hà Nội',
-      MaSoBHYT: 'DN401000000014',
-      KyTuDauBHYT: 'DN',
-    },
-    {
-      MaBenhAn: 'BN015',
-      HoTen: 'Lương Quốc Hưng',
-      CCCD: '001197000015',
-      SDT: '0915000015',
-      DiaChi: 'Gia Lâm, Hà Nội',
-      MaSoBHYT: 'HT401000000015',
-      KyTuDauBHYT: 'HT',
-    },
-  ])
-  const [bookings, setBookings] = useState([
-    {
-      MaLichHen: 'LH_RT_001',
-      MaBenhAn: 'BN001',
-      MaCauHinh: 'CH_CG_DV_KHAM_NOI',
-      MaDichVu: 'DV_KHAM_NOI',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 1,
-      MaBacSi: 'BS001',
-      PaymentToken: 'PAY_MOCK_310501',
-      STT_HangDoi: 1,
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_RT_002',
-      MaBenhAn: 'BN004',
-      MaCauHinh: 'CH_CG_DV_KHAM_NOI',
-      MaDichVu: 'DV_KHAM_NOI',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 1,
-      MaBacSi: 'BS001',
-      PaymentToken: 'PAY_MOCK_310502',
-      STT_HangDoi: 2,
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_RT_003',
-      MaBenhAn: 'BN005',
-      MaCauHinh: 'CH_CG_DV_KHAM_GIA_DINH',
-      MaDichVu: 'DV_KHAM_GIA_DINH',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 1,
-      MaBacSi: 'BS001',
-      PaymentToken: 'PAY_MOCK_310503',
-      STT_HangDoi: 3,
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_RT_004',
-      MaBenhAn: 'BN006',
-      MaCauHinh: 'CH_CG_DV_KHAM_TIM_MACH',
-      MaDichVu: 'DV_KHAM_TIM_MACH',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 1,
-      MaBacSi: 'BS001',
-      PaymentToken: 'PAY_MOCK_310504',
-      TrangThai: 'Đã xác nhận',
-    },
-    {
-      MaLichHen: 'LH_RT_005',
-      MaBenhAn: 'BN007',
-      MaCauHinh: 'CH_CG_DV_KHAM_TIEU_HOA',
-      MaDichVu: 'DV_KHAM_TIEU_HOA',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 1,
-      MaBacSi: 'BS001',
-      PaymentToken: 'PAY_MOCK_310505',
-      TrangThai: 'Đã xác nhận',
-    },
-    {
-      MaLichHen: 'LH_RT_006',
-      MaBenhAn: 'BN003',
-      MaCauHinh: 'CH_CG_DV_KHAM_RANG',
-      MaDichVu: 'DV_KHAM_RANG',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 2,
-      MaBacSi: 'BS002',
-      PaymentToken: 'PAY_MOCK_310506',
-      STT_HangDoi: 1,
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_RT_007',
-      MaBenhAn: 'BN008',
-      MaCauHinh: 'CH_CG_DV_LAY_CAO',
-      MaDichVu: 'DV_LAY_CAO',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 2,
-      MaBacSi: 'BS002',
-      PaymentToken: 'PAY_MOCK_310507',
-      STT_HangDoi: 2,
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_RT_008',
-      MaBenhAn: 'BN009',
-      MaCauHinh: 'CH_CG_DV_KHAM_NIENG_RANG',
-      MaDichVu: 'DV_KHAM_NIENG_RANG',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 2,
-      MaBacSi: 'BS002',
-      PaymentToken: 'PAY_MOCK_310508',
-      STT_HangDoi: 3,
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_RT_009',
-      MaBenhAn: 'BN010',
-      MaCauHinh: 'CH_CG_DV_KHAM_IMPLANT',
-      MaDichVu: 'DV_KHAM_IMPLANT',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 2,
-      MaBacSi: 'BS002',
-      PaymentToken: 'PAY_MOCK_310509',
-      TrangThai: 'Đã xác nhận',
-    },
-    {
-      MaLichHen: 'LH_RT_010',
-      MaBenhAn: 'BN011',
-      MaCauHinh: 'CH_CG_DV_KHAM_RANG',
-      MaDichVu: 'DV_KHAM_RANG',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 2,
-      MaBacSi: 'BS002',
-      PaymentToken: 'PAY_MOCK_310510',
-      TrangThai: 'Đã xác nhận',
-    },
-    {
-      MaLichHen: 'LH_RT_011',
-      MaBenhAn: 'BN012',
-      MaCauHinh: 'CH_CG_DV_KHAM_TMH',
-      MaDichVu: 'DV_KHAM_TMH',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 3,
-      MaBacSi: 'BS003',
-      PaymentToken: 'PAY_MOCK_310511',
-      STT_HangDoi: 1,
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_RT_012',
-      MaBenhAn: 'BN013',
-      MaCauHinh: 'CH_CG_DV_NOI_SOI_TMH',
-      MaDichVu: 'DV_NOI_SOI_TMH',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 3,
-      MaBacSi: 'BS003',
-      PaymentToken: 'PAY_MOCK_310512',
-      TrangThai: 'Đã xác nhận',
-    },
-    {
-      MaLichHen: 'LH_RT_013',
-      MaBenhAn: 'BN014',
-      MaCauHinh: 'CH_CG_DV_KHAM_HO_HAP',
-      MaDichVu: 'DV_KHAM_HO_HAP',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 4,
-      MaBacSi: 'BS004',
-      PaymentToken: 'PAY_MOCK_310513',
-      STT_HangDoi: 1,
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_RT_014',
-      MaBenhAn: 'BN015',
-      MaCauHinh: 'CH_CG_DV_KHAM_NOI_TIET',
-      MaDichVu: 'DV_KHAM_NOI_TIET',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: TODAY,
-      CaKham: 4,
-      MaBacSi: 'BS004',
-      PaymentToken: 'PAY_MOCK_310514',
-      TrangThai: 'Đã xác nhận',
-    },
-    {
-      MaLichHen: 'LH_RT_015',
-      MaBenhAn: 'BN002',
-      MaCauHinh: 'CH_HBT_DV_KHAM_TMH',
-      MaDichVu: 'DV_KHAM_TMH',
-      MaChiNhanh: 'CN_HBT',
-      NgayKham: TODAY,
-      CaKham: 1,
-      MaBacSi: 'BS015',
-      PaymentToken: 'PAY_MOCK_310515',
-      STT_HangDoi: 1,
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_RT_016',
-      MaBenhAn: 'BN004',
-      MaCauHinh: 'CH_HBT_DV_KHAM_GIA_DINH',
-      MaDichVu: 'DV_KHAM_GIA_DINH',
-      MaChiNhanh: 'CN_HBT',
-      NgayKham: TODAY,
-      CaKham: 1,
-      MaBacSi: 'BS013',
-      PaymentToken: 'PAY_MOCK_310516',
-      STT_HangDoi: 1,
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_RT_017',
-      MaBenhAn: 'BN005',
-      MaCauHinh: 'CH_HBT_DV_KHAM_RANG',
-      MaDichVu: 'DV_KHAM_RANG',
-      MaChiNhanh: 'CN_HBT',
-      NgayKham: TODAY,
-      CaKham: 2,
-      MaBacSi: 'BS014',
-      PaymentToken: 'PAY_MOCK_310517',
-      TrangThai: 'Đã xác nhận',
-    },
-    {
-      MaLichHen: 'LH_RT_018',
-      MaBenhAn: 'BN006',
-      MaCauHinh: 'CH_HBT_DV_KHAM_TIEU_HOA',
-      MaDichVu: 'DV_KHAM_TIEU_HOA',
-      MaChiNhanh: 'CN_HBT',
-      NgayKham: TODAY,
-      CaKham: 3,
-      MaBacSi: 'BS016',
-      PaymentToken: 'PAY_MOCK_310518',
-      TrangThai: 'Đã xác nhận',
-    },
-    {
-      MaLichHen: 'LH_RT_019',
-      MaBenhAn: 'BN007',
-      MaCauHinh: 'CH_HBT_DV_KHAM_IMPLANT',
-      MaDichVu: 'DV_KHAM_IMPLANT',
-      MaChiNhanh: 'CN_HBT',
-      NgayKham: TODAY,
-      CaKham: 4,
-      MaBacSi: 'BS018',
-      PaymentToken: 'PAY_MOCK_310519',
-      STT_HangDoi: 1,
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_RT_020',
-      MaBenhAn: 'BN001',
-      MaCauHinh: 'CH_CG_DV_KHAM_TIEU_HOA',
-      MaDichVu: 'DV_KHAM_TIEU_HOA',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: '2026-05-30',
-      CaKham: 2,
-      MaBacSi: 'BS004',
-      PaymentToken: 'PAY_MOCK_300501',
-      TrangThai: 'Hoàn thành',
-    },
-  ])
+  const [branches] = useState([])
+  const [services] = useState([])
+  const [staffList] = useState([])
+  const [patients] = useState([])
+  const [bookings, setBookings] = useState([])
 
   const effectiveBranches = catalogData?.branches || []
   const effectiveServices = catalogData?.services || []
@@ -545,7 +106,7 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
 
     try {
       const params = new URLSearchParams({ ma_chi_nhanh: maChiNhanh, ngay: TODAY })
-      const response = await getCheckinAppointments(params.toString())
+      const response = await getCheckinAppointments(params.toString(), identityAccessToken)
       const result = await response.json()
 
       if (!response.ok || !result?.success) {
@@ -579,8 +140,7 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
       const queueResults = await Promise.all(
         branchDoctorsToday.map(async (doctor) => {
           const params = new URLSearchParams({ ma_chi_nhanh: maChiNhanh })
-          const response = await getWaitingList(doctor.MaBacSi, TODAY, params.toString(),
-          )
+          const response = await getWaitingList(doctor.MaBacSi, TODAY, params.toString(), identityAccessToken)
           const result = await response.json()
 
           if (!response.ok || !result?.success) {
@@ -626,7 +186,7 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
 
       try {
         const params = new URLSearchParams({ keyword, ma_chi_nhanh: maChiNhanh, ngay: TODAY })
-        const response = await searchCheckinAppointment(params.toString())
+        const response = await searchCheckinAppointment(params.toString(), identityAccessToken)
         const result = await response.json()
 
         if (!response.ok || !result?.success) {
@@ -796,10 +356,10 @@ export default function ReceptionistDashboard({ user, onLogout, showNotification
       formData.append('ma_chi_nhanh', maChiNhanh)
       formData.append('ma_le_tan', maLeTan)
 
-      const response = await checkIn({
+       const response = await checkIn({
         method: 'POST',
         body: formData,
-      })
+       }, identityAccessToken)
       const result = await response.json()
 
       if (!response.ok || !result?.success) {

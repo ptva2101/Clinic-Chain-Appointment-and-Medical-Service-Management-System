@@ -85,174 +85,9 @@ export default function AdminDashboard({
   const [doctorSchedules, setDoctorSchedules] = useState([])
   const [adminScheduleLoading, setAdminScheduleLoading] = useState(false)
   const [adminScheduleError, setAdminScheduleError] = useState('')
-  const [appointments, setAppointments] = useState([
-    {
-      MaLichHen: 'LH_001',
-      MaBenhAn: 'BN001',
-      MaCauHinh: 'CH_CG_KHAMNOI',
-      NgayKham: '2026-06-01',
-      CaKham: 1,
-      STT: 1,
-      GiaCuoi: 30000,
-      TrangThai: 'Hoàn thành',
-      MaLeTan: 'LT001',
-      MaBacSi: 'BS001',
-    },
-    {
-      MaLichHen: 'LH_002',
-      MaBenhAn: 'BN002',
-      MaCauHinh: 'CH_CG_KHAMRANG',
-      NgayKham: '2026-06-01',
-      CaKham: 3,
-      STT: 1,
-      GiaCuoi: 200000,
-      TrangThai: 'Đã xác nhận',
-      MaLeTan: '',
-      MaBacSi: 'BS002',
-    },
-    {
-      MaLichHen: 'LH_003',
-      MaBenhAn: 'BN003',
-      MaCauHinh: 'CH_CG_KHAMNOI',
-      NgayKham: '2026-06-01',
-      CaKham: 2,
-      STT: 1,
-      GiaCuoi: 0,
-      TrangThai: 'Chờ khám',
-      MaLeTan: 'LT001',
-      MaBacSi: 'BS001',
-    },
-    {
-      MaLichHen: 'LH_004',
-      MaBenhAn: 'BN002',
-      MaCauHinh: 'CH_CG_KHAMNOI',
-      NgayKham: '2026-06-01',
-      CaKham: 2,
-      STT: 2,
-      GiaCuoi: 150000,
-      TrangThai: 'Hoàn thành',
-      MaLeTan: 'LT001',
-      MaBacSi: 'BS001',
-    },
-    {
-      MaLichHen: 'LH_005',
-      MaBenhAn: 'BN003',
-      MaCauHinh: 'CH_HBT_KHAMTMH',
-      NgayKham: '2026-06-01',
-      CaKham: 1,
-      STT: 1,
-      GiaCuoi: 0,
-      TrangThai: 'Hoàn thành',
-      MaLeTan: 'LT002',
-      MaBacSi: 'BS003',
-    },
-    {
-      MaLichHen: 'LH_006',
-      MaBenhAn: 'BN001',
-      MaCauHinh: 'CH_CG_KHAMNOI',
-      NgayKham: '2026-05-18',
-      CaKham: 1,
-      STT: 1,
-      GiaCuoi: 30000,
-      TrangThai: 'Hoàn thành',
-      MaLeTan: 'LT001',
-      MaBacSi: 'BS001',
-    },
-    {
-      MaLichHen: 'LH_007',
-      MaBenhAn: 'BN002',
-      MaCauHinh: 'CH_CG_KHAMRANG',
-      NgayKham: '2026-05-20',
-      CaKham: 3,
-      STT: 1,
-      GiaCuoi: 200000,
-      TrangThai: 'Đã khám',
-      MaLeTan: 'LT001',
-      MaBacSi: 'BS002',
-    },
-    {
-      MaLichHen: 'LH_008',
-      MaBenhAn: 'BN003',
-      MaCauHinh: 'CH_HBT_KHAMTMH',
-      NgayKham: '2026-05-22',
-      CaKham: 1,
-      STT: 1,
-      GiaCuoi: 0,
-      TrangThai: 'Đã hủy',
-      MaLeTan: 'LT002',
-      MaBacSi: 'BS003',
-    },
-  ])
-  const [labTestDetails] = useState([
-    {
-      MaChiTietXN: 'CTXN_001',
-      MaBenhAn: 'BN001',
-      MaDichVu: 'XN_MAU',
-      MaChiNhanh: 'CN_CG',
-      MaBacSi: 'BS001',
-      NgayThucHien: '2026-06-01',
-      TrangThai: 'Hoàn thành',
-    },
-		    {
-		      MaChiTietXN: 'CTXN_002',
-      MaBenhAn: 'BN002',
-      MaDichVu: 'XN_SINH_HOA',
-      MaChiNhanh: 'CN_CG',
-      MaBacSi: 'BS002',
-      NgayThucHien: '2026-06-01',
-      TrangThai: 'Đang xử lý',
-    },
-    {
-      MaChiTietXN: 'CTXN_003',
-      MaBenhAn: 'BN003',
-      MaDichVu: 'XN_DUONG_HUYET',
-      MaChiNhanh: 'CN_HBT',
-      MaBacSi: 'BS003',
-      NgayThucHien: '2026-06-01',
-      TrangThai: 'Hoàn thành',
-    },
-    {
-      MaChiTietXN: 'CTXN_004',
-      MaBenhAn: 'BN002',
-      MaDichVu: 'SA_O_BUNG',
-      MaChiNhanh: 'CN_CG',
-      MaBacSi: 'BS002',
-      NgayThucHien: '2026-05-20',
-      TrangThai: 'Hoàn thành',
-    },
-  ])
-  const [treatmentRevenueDetails] = useState([
-    {
-      MaLichTrinh: 'LTDT_AD_001',
-      MaBenhAn: 'BN001',
-      MaDichVu: 'DT_RANG_TUY',
-      MaChiNhanh: 'CN_CG',
-      MaBacSi: 'BS002',
-      NgayThucHien: '2026-06-05',
-      GiaCuoi: 240000,
-      TrangThai: 'Hoàn thành',
-    },
-    {
-      MaLichTrinh: 'LTDT_AD_002',
-      MaBenhAn: 'BN003',
-      MaDichVu: 'DT_KHIDUNG',
-      MaChiNhanh: 'CN_HBT',
-      MaBacSi: 'BS003',
-      NgayThucHien: '2026-06-12',
-      GiaCuoi: 0,
-      TrangThai: 'Hoàn thành',
-    },
-    {
-      MaLichTrinh: 'LTDT_AD_003',
-      MaBenhAn: 'BN002',
-      MaDichVu: 'DT_RANG_TUY',
-      MaChiNhanh: 'CN_CG',
-      MaBacSi: 'BS002',
-      NgayThucHien: '2026-05-24',
-      GiaCuoi: 1200000,
-      TrangThai: 'Hoàn thành',
-    },
-  ])
+  const [appointments, setAppointments] = useState([])
+  const [labTestDetails] = useState([])
+  const [treatmentRevenueDetails] = useState([])
   const [bulkScheduleForm, setBulkScheduleForm] = useState({
     MaBacSi: '',
     MaChiNhanh: '',
@@ -570,14 +405,21 @@ export default function AdminDashboard({
     setAdminReportError('')
 
     try {
-      const response = await getMonthlyReport(reportMonth)
+      const response = await getMonthlyReport(reportMonth, identityAccessToken)
       const result = await response.json()
 
-      if (!response.ok || !result?.success) {
-        throw new Error(result?.message || 'Không thể tải báo cáo tháng từ hệ thống.')
+      if (!response.ok) {
+        throw new Error(result?.detail || 'Không thể tải báo cáo tháng từ hệ thống.')
       }
 
-      setAdminReportData(result.data || null)
+      setAdminReportData({
+        totalNetRevenue: result.revenue,
+        totalInsuranceAmount: 0,
+        completedAppointmentCount: result.paid_count,
+        cancellationRate: null,
+        totalServiceUsage: result.paid_count,
+        branchRows: [], doctorRows: [], serviceContributionRows: [],
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể tải báo cáo tháng từ hệ thống.'
       setAdminReportError(message)
@@ -782,13 +624,10 @@ export default function AdminDashboard({
     }
   })()
 
-  const displayReportData = {
-    ...reportData,
-    ...(adminReportData || {}),
-    branchRows: adminReportData?.branchRows || reportData.branchRows,
-    doctorRows: adminReportData?.doctorRows || reportData.doctorRows,
-    serviceContributionRows:
-      adminReportData?.serviceContributionRows || reportData.serviceContributionRows,
+  const displayReportData = adminReportData || {
+    totalNetRevenue: 0, totalInsuranceAmount: 0,
+    completedAppointmentCount: 0, cancellationRate: null,
+    totalServiceUsage: 0, branchRows: [], doctorRows: [], serviceContributionRows: [],
   }
 
   const filteredBranchServices = branchServices.filter((config) => {
@@ -1143,13 +982,8 @@ export default function AdminDashboard({
     const affectedAppointmentIds = new Set(affectedAppointments.map((appointment) => appointment.MaLichHen))
 
     if (affectedCount > 0) {
-      const confirmed = window.confirm(
-        `Ca trực này đang có ${affectedCount} lịch hẹn chưa hoàn thành. Bạn có chắc chắn muốn hủy ca trực này và tự động hoàn tiền cho bệnh nhân?`,
-      )
-
-      if (!confirmed) {
-        return
-      }
+      notify('Ca trực đang có lịch hẹn; cần quy trình hoàn tiền/chuyển lịch trước khi hủy.', 'error')
+      return
     }
 
     try {
@@ -1160,7 +994,7 @@ export default function AdminDashboard({
           id: schedule.id ?? null,
           MaLichTruc: schedule.MaLichTruc,
         }),
-      })
+      }, identityAccessToken)
       const result = await response.json()
 
       if (!response.ok || !result?.success) {
@@ -1263,7 +1097,7 @@ export default function AdminDashboard({
           MaLichTruc: schedule.MaLichTruc,
           newMaBacSi: nextDoctorId,
         }),
-      })
+      }, identityAccessToken)
       const result = await response.json()
 
       if (!response.ok || !result?.success) {
@@ -1304,9 +1138,7 @@ export default function AdminDashboard({
       })
 
       handleCloseDoctorTransfer()
-      notify(
-        `Đã điều chuyển bác sĩ trực và phát thông báo cảnh báo đến ${affectedPatients.length} bệnh nhân bị ảnh hưởng!`,
-      )
+      notify('Đã chuyển ca trực chưa có lịch hẹn sang bác sĩ mới.')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể điều chuyển bác sĩ trực.'
       notify(message, 'error')
@@ -2013,7 +1845,7 @@ export default function AdminDashboard({
           <DollarSign size={24} />
           <span>Tổng Doanh thu Tháng</span>
           <strong>{formatMoney(displayReportData.totalNetRevenue)}</strong>
-          <small>Chỉ tính dịch vụ phát sinh trong tháng đã chọn</small>
+          <small>Tổng tiền đã ghi nhận thanh toán giả lập, không phải giao dịch ngân hàng</small>
         </div>
         <div className="finance-kpi-card insurance">
           <ClipboardList size={24} />
@@ -2023,15 +1855,15 @@ export default function AdminDashboard({
         </div>
         <div className="finance-kpi-card success">
           <Activity size={24} />
-          <span>Tổng Lượt Khám</span>
+          <span>Hóa đơn đã thanh toán (giả lập)</span>
           <strong>{displayReportData.completedAppointmentCount}</strong>
-          <small>Trạng thái Hoàn thành hoặc Đã khám trong tháng</small>
+          <small>Số hóa đơn được ghi nhận thanh toán giả lập trong tháng</small>
         </div>
         <div className="finance-kpi-card danger">
           <Users size={24} />
           <span>Tỷ lệ hủy hẹn trong tháng</span>
-          <strong>{displayReportData.cancellationRate}%</strong>
-          <small>Đối chiếu trên lịch hẹn phát sinh cùng tháng</small>
+          <strong>{displayReportData.cancellationRate == null ? '—' : `${displayReportData.cancellationRate}%`}</strong>
+          <small>Chưa có báo cáo tỷ lệ hủy liên dịch vụ</small>
         </div>
       </div>
 

@@ -6,7 +6,7 @@ import { completeAppointment, completeTreatmentSession, getCompletedEncounters, 
 import TablePagination from './TablePagination.jsx'
 import { getPageRows } from './tablePagination.js'
 
-export default function DoctorDashboard({ user, onLogout, onChangePassword, showNotification, scheduleAdjustments = [], catalogData = EMPTY_CATALOG_DATA }) {
+export default function DoctorDashboard({ user, identityAccessToken, onLogout, onChangePassword, showNotification, scheduleAdjustments = [], catalogData = EMPTY_CATALOG_DATA }) {
   const [doctorProfile, setDoctorProfile] = useState({
     MaBacSi: user?.MaBacSi || user?.id || 'BS001',
     HoTen: user?.HoTen || user?.name || 'Nguyễn Văn An',
@@ -25,7 +25,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
   const [showPasswordForm, setShowPasswordForm] = useState(false)
   const [activeBookingId, setActiveBookingId] = useState('')
   const [doctorLiveRows, setDoctorLiveRows] = useState([])
-  const [hasLoadedDoctorQueue, setHasLoadedDoctorQueue] = useState(false)
+  const [hasLoadedDoctorQueue, setHasLoadedDoctorQueue] = useState(true)
   const [doctorQueueLoading, setDoctorQueueLoading] = useState(false)
   const [doctorQueueError, setDoctorQueueError] = useState('')
   const [doctorActionLoading, setDoctorActionLoading] = useState('')
@@ -54,248 +54,16 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
     setFeedback(message)
     showNotification?.(message, type)
   }
-  const [patients] = useState([
-    {
-      MaBenhAn: 'BN001',
-      HoTen: 'Trần Quang Hải',
-      CCCD: '001095012345',
-      SDT: '0901234567',
-      NgaySinh: '1995-04-12',
-      DiaChi: 'Cầu Giấy, Hà Nội',
-      KyTuDauBHYT: 'DN',
-    },
-    {
-      MaBenhAn: 'BN004',
-      HoTen: 'Lê Hoàng Nam',
-      CCCD: '001186000004',
-      SDT: '0904000004',
-      NgaySinh: '1986-09-20',
-      DiaChi: 'Nam Từ Liêm, Hà Nội',
-      KyTuDauBHYT: 'DN',
-    },
-    {
-      MaBenhAn: 'BN005',
-      HoTen: 'Đỗ Minh Châu',
-      CCCD: '001187000005',
-      SDT: '0905000005',
-      NgaySinh: '1987-02-15',
-      DiaChi: 'Thanh Xuân, Hà Nội',
-      KyTuDauBHYT: '',
-    },
-    {
-      MaBenhAn: 'BN003',
-      HoTen: 'Phạm Lê Minh',
-      CCCD: '001221098765',
-      SDT: '0911999888',
-      NgaySinh: '2021-01-08',
-      DiaChi: 'Hai Bà Trưng, Hà Nội',
-      KyTuDauBHYT: 'TE',
-    },
-  ])
-  const [services] = useState([
-    { MaDichVu: 'DV_KHAM_NOI', TenDichVu: 'Khám Nội Tổng Quát', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 150000 },
-    { MaDichVu: 'DV_KHAM_GIA_DINH', TenDichVu: 'Khám Sức Khỏe Gia Đình', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 250000 },
-    { MaDichVu: 'DV_KHAM_TIM_MACH', TenDichVu: 'Khám Sàng Lọc Tim Mạch - Huyết Áp', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 200000 },
-    { MaDichVu: 'DV_KHAM_TIEU_HOA', TenDichVu: 'Khám Tiêu Hóa - Gan Mật', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 180000 },
-    { MaDichVu: 'DV_KHAM_RANG', TenDichVu: 'Khám Răng Hàm Mặt Định Kỳ', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 200000 },
-    { MaDichVu: 'DV_KHAM_TMH', TenDichVu: 'Khám Tai Mũi Họng Thông Thường', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 180000 },
-    { MaDichVu: 'XN_MAU', TenDichVu: 'Xét Nghiệm Công Thức Máu 24 Chỉ Số', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 250000 },
-    { MaDichVu: 'SA_O_BUNG', TenDichVu: 'Siêu Âm Ổ Bụng Tổng Quát', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 300000 },
-    { MaDichVu: 'XN_SINH_HOA', TenDichVu: 'Xét Nghiệm Sinh Hóa Máu (Gan, Thận, Mỡ Máu)', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 350000 },
-    { MaDichVu: 'DT_TRUYEN_DICH', TenDichVu: 'Liệu trình truyền dịch giải độc, bù nước', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Điều trị', GiaGoc: 250000 },
-    { MaDichVu: 'DT_RANG_TUY', TenDichVu: 'Liệu Trình Điều Trị Tủy Răng Toàn Diện', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Điều trị', GiaGoc: 1200000 },
-    { MaDichVu: 'DT_KHIDUNG', TenDichVu: 'Liệu Trình Khí Dung Mũi Họng', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Điều trị', GiaGoc: 450000 },
-  ])
+  const [patients] = useState([])
+  const [services] = useState([])
   const doctorSchedules = catalogData?.doctorSchedules || []
-  const [bookings, setBookings] = useState([
-    {
-      MaLichHen: 'LH_DR_001',
-      MaBenhAn: 'BN001',
-      MaDichVu: 'DV_KHAM_NOI',
-      MaChiNhanh: 'CN_CG',
-      MaBacSi: 'BS001',
-      NgayKham: '2026-05-31',
-      CaKham: 1,
-      STT_HangDoi: 1,
-      ThoiGianCheckIn: '08:05',
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_DR_002',
-      MaBenhAn: 'BN004',
-      MaDichVu: 'DV_KHAM_GIA_DINH',
-      MaChiNhanh: 'CN_CG',
-      MaBacSi: 'BS001',
-      NgayKham: '2026-05-31',
-      CaKham: 1,
-      STT_HangDoi: 2,
-      ThoiGianCheckIn: '08:14',
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_DR_003',
-      MaBenhAn: 'BN005',
-      MaDichVu: 'DV_KHAM_TIEU_HOA',
-      MaChiNhanh: 'CN_CG',
-      MaBacSi: 'BS001',
-      NgayKham: '2026-05-31',
-      CaKham: 1,
-      STT_HangDoi: 3,
-      ThoiGianCheckIn: '08:21',
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_DR_004',
-      MaBenhAn: 'BN003',
-      MaDichVu: 'DV_KHAM_RANG',
-      MaChiNhanh: 'CN_CG',
-      MaBacSi: 'BS002',
-      NgayKham: '2026-05-31',
-      CaKham: 2,
-      STT_HangDoi: 1,
-      ThoiGianCheckIn: '09:02',
-      TrangThai: 'Chờ khám',
-    },
-    {
-      MaLichHen: 'LH_DR_005',
-      MaLuotKham: 'LK_001',
-      MaBenhAn: 'BN001',
-      MaDichVu: 'DV_KHAM_NOI',
-      MaChiNhanh: 'CN_CG',
-      MaBacSi: 'BS001',
-      NgayKham: '2026-05-10',
-      CaKham: 1,
-      ThoiGianCheckIn: '08:10',
-      TrangThai: 'Đã khám',
-    },
-    {
-      MaLichHen: 'LH_DR_006',
-      MaLuotKham: 'LK_002',
-      MaBenhAn: 'BN001',
-      MaDichVu: 'DV_KHAM_TIEU_HOA',
-      MaChiNhanh: 'CN_CG',
-      MaBacSi: 'BS001',
-      NgayKham: '2026-04-18',
-      CaKham: 2,
-      ThoiGianCheckIn: '14:05',
-      TrangThai: 'Đã khám',
-    },
-    {
-      MaLichHen: 'LH_DR_007',
-      MaLuotKham: 'LK_003',
-      MaBenhAn: 'BN004',
-      MaDichVu: 'DV_KHAM_TIM_MACH',
-      MaChiNhanh: 'CN_CG',
-      MaBacSi: 'BS001',
-      NgayKham: '2026-03-22',
-      CaKham: 1,
-      ThoiGianCheckIn: '09:30',
-      TrangThai: 'Đã khám',
-    },
-  ])
-  const [diseases] = useState([
-    { MaBenh: 'K29', TenBenh: 'Viêm dạ dày và tá tràng' },
-    { MaBenh: 'K21', TenBenh: 'Trào ngược dạ dày thực quản' },
-    { MaBenh: 'J01', TenBenh: 'Viêm xoang cấp' },
-    { MaBenh: 'K05', TenBenh: 'Viêm nướu và bệnh nha chu' },
-    { MaBenh: 'ICD_MMLL', TenBenh: 'Mệt mỏi lao lực' },
-  ])
-  const [visitRecords, setVisitRecords] = useState([
-    {
-      MaLuotKham: 'LK_001',
-      MaBenhAn: 'BN001',
-      NgayKham: '2026-05-10',
-      MaBacSi: 'BS001',
-      TrieuChung: 'Đau rát thượng vị, đầy hơi sau ăn, buồn nôn nhẹ.',
-      MaBenh: 'K29',
-      LoiDan: 'Ăn uống đúng giờ, kiêng đồ cay nóng, tái khám nếu đau tăng.',
-    },
-    {
-      MaLuotKham: 'LK_002',
-      MaBenhAn: 'BN001',
-      NgayKham: '2026-04-18',
-      MaBacSi: 'BS001',
-      TrieuChung: 'Ợ nóng sau ăn, đau âm ỉ vùng thượng vị.',
-      MaBenh: 'K21',
-      LoiDan: 'Không nằm ngay sau ăn, chia nhỏ bữa, dùng thuốc đủ liệu trình.',
-    },
-    {
-      MaLuotKham: 'LK_003',
-      MaBenhAn: 'BN004',
-      NgayKham: '2026-03-22',
-      MaBacSi: 'BS001',
-      TrieuChung: 'Mệt mỏi, đau đầu nhẹ, huyết áp dao động.',
-      MaBenh: 'K29',
-      LoiDan: 'Theo dõi huyết áp tại nhà, ngủ đủ giấc, hạn chế rượu bia.',
-    },
-    {
-      MaLuotKham: 'LK_004',
-      MaBenhAn: 'BN003',
-      NgayKham: '2026-04-02',
-      MaBacSi: 'BS002',
-      TrieuChung: 'Chảy máu chân răng khi đánh răng, ê buốt răng hàm dưới.',
-      MaBenh: 'K05',
-      LoiDan: 'Vệ sinh răng miệng đúng cách, dùng chỉ nha khoa, tái khám nha chu.',
-    },
-  ])
-  const [medicines] = useState([
-    { MaThuoc: 'TH001', TenThuoc: 'Omeprazole 20mg', DonViTinh: 'Viên' },
-    { MaThuoc: 'TH002', TenThuoc: 'Phosphalugel', DonViTinh: 'Gói' },
-    { MaThuoc: 'TH003', TenThuoc: 'Domperidone 10mg', DonViTinh: 'Viên' },
-    { MaThuoc: 'TH004', TenThuoc: 'Loratadine 10mg', DonViTinh: 'Viên' },
-  ])
-  const [prescriptionDetails, setPrescriptionDetails] = useState([
-    { MaDonThuoc: 'DT001', MaLuotKham: 'LK_001', MaThuoc: 'TH001', SoLuong: 14, LieuDung: 'Uống 1 viên trước ăn sáng 30 phút trong 14 ngày.' },
-    { MaDonThuoc: 'DT002', MaLuotKham: 'LK_001', MaThuoc: 'TH002', SoLuong: 10, LieuDung: 'Uống 1 gói khi đau hoặc nóng rát dạ dày.' },
-    { MaDonThuoc: 'DT003', MaLuotKham: 'LK_002', MaThuoc: 'TH003', SoLuong: 10, LieuDung: 'Uống 1 viên trước bữa ăn khi buồn nôn hoặc đầy hơi.' },
-    { MaDonThuoc: 'DT004', MaLuotKham: 'LK_003', MaThuoc: 'TH004', SoLuong: 7, LieuDung: 'Uống 1 viên mỗi tối trong 7 ngày.' },
-  ])
-  const [labDetails, setLabDetails] = useState([
-    {
-      MaChiTietXN: 'CTXN_001',
-      MaLuotKham: 'LK_001',
-      MaDichVu: 'XN_MAU',
-      KetQuaXetNghiem: 'Bạch cầu trong giới hạn bình thường, Hemoglobin 145 g/L.',
-      MaXNV: 'XNV001',
-      TrangThaiXetNghiem: 'Đã có kết quả',
-    },
-    {
-      MaChiTietXN: 'CTXN_002',
-      MaLuotKham: 'LK_002',
-      MaDichVu: 'SA_O_BUNG',
-      KetQuaXetNghiem: 'Gan không to, nhu mô gan hơi tăng âm, túi mật không sỏi.',
-      MaXNV: 'XNV001',
-      TrangThaiXetNghiem: 'Đã có kết quả',
-    },
-    {
-      MaChiTietXN: 'CTXN_003',
-      MaLuotKham: 'LK_003',
-      MaDichVu: 'XN_SINH_HOA',
-      KetQuaXetNghiem: 'Men gan AST/ALT trong giới hạn, chức năng thận bình thường.',
-      MaXNV: 'XNV001',
-      TrangThaiXetNghiem: 'Đã có kết quả',
-    },
-  ])
-  const [treatmentSchedules, setTreatmentSchedules] = useState([
-    {
-      MaLichTrinh: 'LTDT_OLD_001',
-      MaLuotKham: 'LK_001',
-      TenDichVu: 'Liệu trình Điều trị tủy răng sinh học',
-      TongSoBuoi: 5,
-      SoBuoiDaLam: 2,
-      TrangThai: 'Đang tiến hành',
-      GhiChuDieuTri: 'Răng đỡ đau, tiếp tục theo dõi và hàn kín vào buổi tới.',
-    },
-    {
-      MaLichTrinh: 'LTDT_OLD_002',
-      MaLuotKham: 'LK_003',
-      TenDichVu: 'Vật lý trị liệu phục hồi chức năng',
-      TongSoBuoi: 3,
-      SoBuoiDaLam: 3,
-      TrangThai: 'Đã hoàn thành',
-      GhiChuDieuTri: 'Răng đỡ đau, tiếp tục theo dõi và hàn kín vào buổi tới.',
-    },
-  ])
+  const [bookings, setBookings] = useState([])
+  const [diseases] = useState([])
+  const [visitRecords, setVisitRecords] = useState([])
+  const [medicines] = useState([])
+  const [prescriptionDetails, setPrescriptionDetails] = useState([])
+  const [labDetails, setLabDetails] = useState([])
+  const [treatmentSchedules, setTreatmentSchedules] = useState([])
 
   const effectiveServices = catalogData?.services || []
   const effectiveDiseases = catalogData?.diseases?.length ? catalogData.diseases : diseases
@@ -304,7 +72,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
 
   const getPatient = (maBenhAn) =>
     doctorPatientMap.get(maBenhAn) ||
-    patients.find((patient) => patient.MaBenhAn === maBenhAn) || {
+    {
       MaBenhAn: maBenhAn,
       HoTen: 'Chưa rõ',
       SDT: 'Chưa cập nhật',
@@ -491,8 +259,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
     setDoctorQueueError('')
 
     try {
-      const response = await getDoctorQueue(doctorProfile.MaBacSi,
-      )
+      const response = await getDoctorQueue(doctorProfile.MaBacSi, identityAccessToken)
       const result = await response.json()
 
       if (!response.ok || !result?.success) {
@@ -514,8 +281,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
     if (!doctorProfile.MaBacSi) return
 
     try {
-      const response = await getCompletedEncounters(doctorProfile.MaBacSi,
-      )
+      const response = await getCompletedEncounters(doctorProfile.MaBacSi, identityAccessToken)
       const result = await response.json()
 
       if (!response.ok || !result?.success) {
@@ -533,8 +299,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
     if (!maBenhAn) return { nextVisits: [], nextBookings: [] }
 
     try {
-      const response = await getDoctorPatientHistory(maBenhAn,
-      )
+      const response = await getDoctorPatientHistory(maBenhAn, identityAccessToken)
       const result = await response.json()
 
       if (!response.ok || !result?.success) {
@@ -557,7 +322,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
     const response = await updateAppointmentStatus({
       method: 'POST',
       body: formData,
-    })
+    }, identityAccessToken)
     const result = await response.json()
 
     if (!response.ok || !result?.success) {
@@ -631,7 +396,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
       })
       .sort((a, b) => a.weekStartKey.localeCompare(b.weekStartKey))
   })()
-  const doctorSourceBookings = hasLoadedDoctorQueue ? doctorLiveRows : bookings
+  const doctorSourceBookings = doctorLiveRows
   const isDoctorOwnedBooking = (booking) =>
     booking.MaBacSi === doctorProfile.MaBacSi &&
     (hasLoadedDoctorQueue || booking.MaChiNhanh === doctorProfile.MaChiNhanh)
@@ -646,8 +411,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
     .sort((a, b) => Number(a.STT_HangDoi || 0) - Number(b.STT_HangDoi || 0))
 
   const activeBooking =
-    doctorSourceBookings.find((booking) => booking.MaLichHen === activeBookingId) ||
-    bookings.find((booking) => booking.MaLichHen === activeBookingId)
+    doctorSourceBookings.find((booking) => booking.MaLichHen === activeBookingId)
   const activePatient = activeBooking ? getPatient(activeBooking.MaBenhAn) : null
   const activeBookingService = activeBooking ? getService(activeBooking.MaDichVu) : null
   const activeBookingServiceType = activeBooking?.LoaiDichVu || activeBookingService?.LoaiDichVu || ''
@@ -901,7 +665,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
       ma_luot_kham: maLuotKham,
       ma_bac_si: doctorProfile.MaBacSi,
     })
-    const response = await getEncounterDetail(params.toString())
+    const response = await getEncounterDetail(params.toString(), identityAccessToken)
     const result = await response.json()
 
     if (!response.ok || !result?.success) {
@@ -917,7 +681,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(buildExamPayload(isDraft)),
-    })
+    }, identityAccessToken)
     const result = await response.json()
 
     if (!response.ok || !result?.success) {
@@ -1196,7 +960,7 @@ export default function DoctorDashboard({ user, onLogout, onChangePassword, show
           ma_lich_hen: activeBooking.MaLichHen,
           ma_bac_si: doctorProfile.MaBacSi,
         }),
-      })
+      }, identityAccessToken)
       const result = await response.json()
 
       if (!response.ok || !result?.success) {

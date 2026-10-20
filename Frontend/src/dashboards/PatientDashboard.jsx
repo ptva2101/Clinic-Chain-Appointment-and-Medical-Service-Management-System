@@ -3,8 +3,12 @@ import { LogOut } from 'lucide-react'
 import medicalLogoImage from '../assets/medical-logo-cutout.png'
 import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
 import { NotificationBell } from '../shared/Widgets.jsx'
-import { bookAndPay, bookTreatment, getPatientAppointments, getPatientNotifications } from '../api/appointment.js'
+import { bookTreatment, cancelPatientAppointment, createPatientAppointment, getPatientAppointments, getPatientNotifications } from '../api/appointment.js'
 import { getPatientMedicalHistory } from '../api/clinical.js'
+import { getSchedulingAvailability } from '../api/scheduling.js'
+import { updatePatientProfile } from '../api/patientProfile.js'
+import { createPatientInvoice, getPatientInvoices, simulatePatientPayment } from '../api/billing.js'
+import { getFutureDateKey, getTodayDateKey } from '../shared/dates.js'
 import TablePagination from './TablePagination.jsx'
 import { getPageRows } from './tablePagination.js'
 
@@ -23,365 +27,37 @@ export default function PatientDashboard({
   const [activeMenu, setActiveMenu] = useState('booking')
   const [serviceSearch, setServiceSearch] = useState('')
   const [bookingMethod, setBookingMethod] = useState('time')
-  const [branches] = useState([
-    {
-      MaChiNhanh: 'CN_CG',
-      TenChiNhanh: 'Medicare - Cơ sở Cầu Giấy',
-      DiaChi: 'Số 1 Dịch Vọng Hậu, Cầu Giấy, Hà Nội',
-    },
-    {
-      MaChiNhanh: 'CN_HBT',
-      TenChiNhanh: 'Medicare - Cơ sở Hai Bà Trưng',
-      DiaChi: 'Số 99 Đại Cồ Việt, Hai Bà Trưng, Hà Nội',
-    },
-  ])
-  const [services] = useState([
-    { MaDichVu: 'DV_KHAM_NOI', TenDichVu: 'Khám Nội Tổng Quát', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 150000 },
-    { MaDichVu: 'DV_KHAM_GIA_DINH', TenDichVu: 'Khám Sức Khỏe Gia Đình', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 250000 },
-    { MaDichVu: 'DV_KHAM_LAO_KHOA', TenDichVu: 'Khám Tư Vấn Sức Khỏe Lão Khoa', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 180000 },
-    { MaDichVu: 'DV_KHAM_TIM_MACH', TenDichVu: 'Khám Sàng Lọc Tim Mạch - Huyết Áp', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 200000 },
-    { MaDichVu: 'DV_KHAM_TIEU_HOA', TenDichVu: 'Khám Tiêu Hóa - Gan Mật', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 180000 },
-    { MaDichVu: 'DV_KHAM_HO_HAP', TenDichVu: 'Khám Bệnh Lý Đường Hô Hấp', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 170000 },
-    { MaDichVu: 'DV_KHAM_NOI_TIET', TenDichVu: 'Khám Sàng Lọc Tiểu Đường & Nội Tiết', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 220000 },
-    { MaDichVu: 'DV_KHAM_DINH_DUONG', TenDichVu: 'Khám Tư Vấn Dinh Dưỡng Chuyên Sâu', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 150000 },
-    { MaDichVu: 'DT_TRUYEN_DICH', TenDichVu: 'Liệu trình truyền dịch giải độc, bù nước', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Điều trị', GiaGoc: 250000 },
-    { MaDichVu: 'DT_TIEM_KHANG_SINH', TenDichVu: 'Dịch vụ tiêm thuốc/kháng sinh theo chỉ định', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Điều trị', GiaGoc: 80000 },
-    { MaDichVu: 'DV_KHAM_RANG', TenDichVu: 'Khám Răng Hàm Mặt Định Kỳ', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 200000 },
-    { MaDichVu: 'DV_LAY_CAO', TenDichVu: 'Lấy Cao Răng Và Đánh Bóng Thẩm Mỹ', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 150000 },
-    { MaDichVu: 'DV_KHAM_NIENG_RANG', TenDichVu: 'Khám Tư Vấn Chỉnh Nha/Niềng Răng', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 300000 },
-    { MaDichVu: 'DV_KHAM_IMPLANT', TenDichVu: 'Khám Tư Vấn Trồng Răng Implant', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 300000 },
-    { MaDichVu: 'DT_HAN_RANG', TenDichVu: 'Hàn Răng Composite Thẩm Mỹ (1 Răng)', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Điều trị', GiaGoc: 300000 },
-    { MaDichVu: 'DT_RANG_TUY', TenDichVu: 'Liệu Trình Điều Trị Tủy Răng Toàn Diện', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Điều trị', GiaGoc: 1200000 },
-    { MaDichVu: 'DT_NHO_RANG_KHON', TenDichVu: 'Phẫu Thuật Nhổ Răng Khôn Mọc Lệch', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Điều trị', GiaGoc: 1000000 },
-    { MaDichVu: 'DT_TAY_TRANG', TenDichVu: 'Tẩy Trắng Răng Công Nghệ Laser', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Điều trị', GiaGoc: 2000000 },
-    { MaDichVu: 'DV_KHAM_TMH', TenDichVu: 'Khám Tai Mũi Họng Thông Thường', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 180000 },
-    { MaDichVu: 'DV_NOI_SOI_TMH', TenDichVu: 'Nội Soi Tai Mũi Họng Ống Mềm', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 250000 },
-    { MaDichVu: 'DV_KHAM_THINH_LUC', TenDichVu: 'Khám Đo Thính Lực Đơn Âm', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 200000 },
-    { MaDichVu: 'DT_KHIDUNG', TenDichVu: 'Liệu Trình Khí Dung Mũi Họng', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Điều trị', GiaGoc: 450000 },
-    { MaDichVu: 'DT_VIEM_AMIDAN', TenDichVu: 'Liệu Trình Điều Trị Viêm Amidan Hạt', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Điều trị', GiaGoc: 600000 },
-    { MaDichVu: 'DT_RUA_XOANG', TenDichVu: 'Hút Mủ Và Chọc Rửa Xoang Điều Trị', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Điều trị', GiaGoc: 350000 },
-    { MaDichVu: 'DT_LAY_DI_VAT', TenDichVu: 'Thủ Thuật Lấy Dị Vật Vùng Tai/Mũi/Họng', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Điều trị', GiaGoc: 400000 },
-    { MaDichVu: 'XN_MAU', TenDichVu: 'Xét Nghiệm Công Thức Máu 24 Chỉ Số', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 250000 },
-    { MaDichVu: 'SA_O_BUNG', TenDichVu: 'Siêu Âm Ổ Bụng Tổng Quát', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 300000 },
-    { MaDichVu: 'XN_NUOC_TIEU', TenDichVu: 'Xét Nghiệm Nước Tiểu Toàn Bộ (10 Thông Số)', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 120000 },
-    { MaDichVu: 'XN_SINH_HOA', TenDichVu: 'Xét Nghiệm Sinh Hóa Máu (Gan, Thận, Mỡ Máu)', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 350000 },
-    { MaDichVu: 'XN_DUONG_HUYET', TenDichVu: 'Xét Nghiệm Đường Huyết Nhanh', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 80000 },
-  ])
-  const [branchServices] = useState(() =>
-    ['CN_CG', 'CN_HBT'].flatMap((maChiNhanh) =>
-      services.map((service) => ({
-        MaCauHinh: `${maChiNhanh === 'CN_CG' ? 'CH_CG' : 'CH_HBT'}_${service.MaDichVu}`,
-        MaChiNhanh: maChiNhanh,
-        MaDichVu: service.MaDichVu,
-        SlotGioiHan: 15,
-      })),
-    ),
-  )
-  const [staffList] = useState([
-    { MaBacSi: 'BS001', HoTen: 'Nguyễn Văn An', ChuyenKhoa: 'Nội tổng quát', SDT: '0911222333' },
-    { MaBacSi: 'BS002', HoTen: 'Lê Thị Bình', ChuyenKhoa: 'Răng hàm mặt', SDT: '0922333444' },
-    { MaBacSi: 'BS003', HoTen: 'Phạm Hoàng Long', ChuyenKhoa: 'Tai mũi họng', SDT: '0933444555' },
-    { MaBacSi: 'BS004', HoTen: 'Trần Trần Đức', ChuyenKhoa: 'Nội tổng quát', SDT: '0944555666' },
-    { MaBacSi: 'BS005', HoTen: 'Nguyễn Thị Minh', ChuyenKhoa: 'Nội tổng quát', SDT: '0912345678' },
-    { MaBacSi: 'BS006', HoTen: 'Phan Văn Khải', ChuyenKhoa: 'Răng hàm mặt', SDT: '0923456789' },
-    { MaBacSi: 'BS007', HoTen: 'Hoàng Lê Giang', ChuyenKhoa: 'Tai mũi họng', SDT: '0934567890' },
-    { MaBacSi: 'BS008', HoTen: 'Vũ Ngô Hùng', ChuyenKhoa: 'Răng hàm mặt', SDT: '0945678901' },
-    { MaBacSi: 'BS009', HoTen: 'Đỗ Thúy Hạnh', ChuyenKhoa: 'Nội tổng quát', SDT: '0913456789' },
-    { MaBacSi: 'BS010', HoTen: 'Bùi Chí Kiên', ChuyenKhoa: 'Răng hàm mặt', SDT: '0924567890' },
-    { MaBacSi: 'BS011', HoTen: 'Lý Thu Thảo', ChuyenKhoa: 'Tai mũi họng', SDT: '0935678901' },
-    { MaBacSi: 'BS012', HoTen: 'Đặng Quốc Bảo', ChuyenKhoa: 'Tai mũi họng', SDT: '0946789012' },
-    { MaBacSi: 'BS013', HoTen: 'Ngô Bảo Ngọc', ChuyenKhoa: 'Nội tổng quát', SDT: '0914567890' },
-    { MaBacSi: 'BS014', HoTen: 'Dương Văn Lâm', ChuyenKhoa: 'Răng hàm mặt', SDT: '0925678901' },
-    { MaBacSi: 'BS015', HoTen: 'Võ Thị Sáu', ChuyenKhoa: 'Tai mũi họng', SDT: '0936789012' },
-    { MaBacSi: 'BS016', HoTen: 'Tống Phước Hải', ChuyenKhoa: 'Nội tổng quát', SDT: '0947890123' },
-    { MaBacSi: 'BS017', HoTen: 'Đinh Công Mạnh', ChuyenKhoa: 'Nội tổng quát', SDT: '0915678901' },
-    { MaBacSi: 'BS018', HoTen: 'Mai Phương Thảo', ChuyenKhoa: 'Răng hàm mặt', SDT: '0926789012' },
-    { MaBacSi: 'BS019', HoTen: 'Hồ Tiến Dũng', ChuyenKhoa: 'Tai mũi họng', SDT: '0937890123' },
-    { MaBacSi: 'BS020', HoTen: 'Trịnh Đình Quang', ChuyenKhoa: 'Răng hàm mặt', SDT: '0948901234' },
-    { MaBacSi: 'BS021', HoTen: 'Vương Kim Chi', ChuyenKhoa: 'Nội tổng quát', SDT: '0916789012' },
-    { MaBacSi: 'BS022', HoTen: 'Đoàn Nguyên Đức', ChuyenKhoa: 'Răng hàm mặt', SDT: '0927890123' },
-    { MaBacSi: 'BS023', HoTen: 'Lưu Hồng Quang', ChuyenKhoa: 'Tai mũi họng', SDT: '0938901234' },
-  ])
 	  const initialPatientProfile = {
-	    MaBenhAn: user?.MaBenhAn || 'BN001',
-	    HoTen: user?.HoTen || user?.name || 'Trần Quang Hải',
-	    NgaySinh: user?.NgaySinh || '1995-04-12',
-	    GioiTinh: user?.GioiTinh || 'Nam',
-	    SDT: user?.SDT || '0901234567',
-	    DiaChi: user?.DiaChi || 'Cầu Giấy, Hà Nội',
-	    CCCD: user?.CCCD || user?.id || '001095012345',
-	    MaSoBHYT: user?.MaSoBHYT || 'DN4010123456789',
-	    KyTuDauBHYT: user?.KyTuDauBHYT || 'DN',
+	    MaBenhAn: user?.MaBenhAn || user?.id || '',
+	    HoTen: user?.HoTen || user?.name || '',
+	    NgaySinh: user?.NgaySinh || '',
+	    GioiTinh: user?.GioiTinh || '',
+	    SDT: user?.SDT || '',
+	    DiaChi: user?.DiaChi || '',
+	    CCCD: user?.CCCD || '',
+	    MaSoBHYT: user?.MaSoBHYT || '',
+	    KyTuDauBHYT: user?.KyTuDauBHYT || '',
 	  }
 	  const [patient, setPatient] = useState(initialPatientProfile)
-	  const [, setPatientDirectory] = useState([initialPatientProfile])
   const patientNotifications = notifications.filter(
     (notification) =>
       notification.MaBenhAn === patient.MaBenhAn ||
       notification.MaBenhNhan === patient.MaBenhAn,
   )
-	  const [bookings, setBookings] = useState([
-    {
-      MaLichHen: 'LH_001',
-      MaBenhAn: 'BN001',
-      MaCauHinh: 'CH_CG_DV_KHAM_NOI',
-      MaDichVu: 'DV_KHAM_NOI',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: '2026-06-01',
-      CaKham: 1,
-      MaBacSi: 'BS001',
-      PaymentToken: 'PAY_MOCK_100001',
-      TrangThai: 'Hoàn thành',
-    },
-	    {
-	      MaLichHen: 'LH_003',
-	      MaBenhAn: 'BN001',
-      MaCauHinh: 'CH_CG_DV_KHAM_NOI',
-      MaDichVu: 'DV_KHAM_NOI',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: '2026-06-01',
-      CaKham: 4,
-      MaBacSi: 'BS004',
-      PaymentToken: 'PAY_MOCK_100002',
-	      TrangThai: 'Chờ khám',
-	    },
-	    {
-	      MaLichHen: 'LH_004',
-	      MaBenhAn: 'BN001',
-	      MaCauHinh: 'CH_CG_DV_KHAM_TIEU_HOA',
-	      MaDichVu: 'DV_KHAM_TIEU_HOA',
-	      MaChiNhanh: 'CN_CG',
-	      NgayKham: '2026-05-18',
-	      CaKham: 2,
-	      MaBacSi: 'BS005',
-	      PaymentToken: 'PAY_MOCK_100004',
-	      TrangThai: 'Hoàn thành',
-	    },
-	    {
-	      MaLichHen: 'LH_005',
-	      MaBenhAn: 'BN001',
-	      MaCauHinh: 'CH_HBT_DV_KHAM_TMH',
-	      MaDichVu: 'DV_KHAM_TMH',
-	      MaChiNhanh: 'CN_HBT',
-	      NgayKham: '2026-04-22',
-	      CaKham: 1,
-	      MaBacSi: 'BS015',
-	      PaymentToken: 'PAY_MOCK_100005',
-	      TrangThai: 'Hoàn thành',
-	    },
-	    {
-	      MaLichHen: 'LH_006',
-	      MaBenhAn: 'BN001',
-	      MaCauHinh: 'CH_CG_DV_KHAM_RANG',
-	      MaDichVu: 'DV_KHAM_RANG',
-	      MaChiNhanh: 'CN_CG',
-	      NgayKham: '2026-03-30',
-	      CaKham: 3,
-	      MaBacSi: 'BS006',
-	      PaymentToken: 'PAY_MOCK_100006',
-	      TrangThai: 'Hoàn thành',
-	    },
-	  ])
-	  const [diseases] = useState([
-		    { MaBenh: 'K29', TenBenh: 'Viêm dạ dày và tá tràng' },
-		    { MaBenh: 'J30', TenBenh: 'Viêm mũi dị ứng' },
-		    { MaBenh: 'K02', TenBenh: 'Sâu răng' },
-		    { MaBenh: 'K21', TenBenh: 'Trào ngược dạ dày thực quản' },
-		    { MaBenh: 'J01', TenBenh: 'Viêm xoang cấp' },
-		    { MaBenh: 'K05', TenBenh: 'Viêm nướu và bệnh nha chu' },
-		  ])
-	  const [visitRecords, setVisitRecords] = useState([
-	    {
-	      MaLuotKham: 'LK_001',
-	      MaLichHen: 'LH_001',
-	      TrieuChung: 'Đau rát vùng thượng vị theo chu kỳ, đầy hơi sau ăn, buồn nôn nhẹ vào buổi sáng.',
-		      LoiDan: 'Ăn uống đúng giờ, kiêng đồ chua cay, hạn chế cà phê, tái khám sau 14 ngày nếu còn đau.',
-		      MaBenh: 'K29',
-		    },
-		    {
-		      MaLuotKham: 'LK_002',
-		      MaLichHen: 'LH_004',
-		      TrieuChung: 'Ợ nóng sau ăn, đau âm ỉ vùng thượng vị, cảm giác nghẹn nhẹ khi nằm sau bữa tối.',
-		      LoiDan: 'Không nằm ngay sau ăn, chia nhỏ bữa, theo dõi triệu chứng ợ nóng và tái khám sau 3 tuần.',
-		      MaBenh: 'K21',
-		    },
-		    {
-		      MaLuotKham: 'LK_003',
-		      MaLichHen: 'LH_005',
-		      TrieuChung: 'Nghẹt mũi kéo dài, đau vùng trán, chảy dịch mũi vàng xanh, giảm ngửi.',
-		      LoiDan: 'Rửa mũi bằng nước muối sinh lý, tránh khói bụi, quay lại nếu sốt hoặc đau tăng.',
-		      MaBenh: 'J01',
-		    },
-		    {
-		      MaLuotKham: 'LK_004',
-		      MaLichHen: 'LH_006',
-		      TrieuChung: 'Chảy máu chân răng khi đánh răng, ê buốt răng hàm dưới, mảng bám nhiều.',
-		      LoiDan: 'Vệ sinh răng miệng đúng cách, dùng chỉ nha khoa, tái khám nha chu sau 1 tháng.',
-		      MaBenh: 'K05',
-		    },
-		  ])
-	  const [medicines] = useState([
-		    { MaThuoc: 'TH001', TenThuoc: 'Omeprazole 20mg', DonViTinh: 'Viên' },
-		    { MaThuoc: 'TH002', TenThuoc: 'Phosphalugel', DonViTinh: 'Gói' },
-		    { MaThuoc: 'TH003', TenThuoc: 'Domperidone 10mg', DonViTinh: 'Viên' },
-		    { MaThuoc: 'TH004', TenThuoc: 'Esomeprazole 40mg', DonViTinh: 'Viên' },
-		    { MaThuoc: 'TH005', TenThuoc: 'Loratadine 10mg', DonViTinh: 'Viên' },
-		    { MaThuoc: 'TH006', TenThuoc: 'Nước muối xịt mũi', DonViTinh: 'Chai' },
-		    { MaThuoc: 'TH007', TenThuoc: 'Chlorhexidine súc miệng', DonViTinh: 'Chai' },
-		  ])
-	  const [prescriptionDetails, setPrescriptionDetails] = useState([
-		    { MaDonThuoc: 'DT001', MaLuotKham: 'LK_001', MaThuoc: 'TH001', SoLuong: 14, LieuDung: 'Uống 1 viên trước ăn sáng 30 phút trong 14 ngày.' },
-		    { MaDonThuoc: 'DT002', MaLuotKham: 'LK_001', MaThuoc: 'TH002', SoLuong: 10, LieuDung: 'Uống 1 gói khi đau hoặc nóng rát dạ dày, tối đa 3 gói/ngày.' },
-		    { MaDonThuoc: 'DT003', MaLuotKham: 'LK_001', MaThuoc: 'TH003', SoLuong: 10, LieuDung: 'Uống 1 viên trước bữa ăn khi buồn nôn hoặc đầy hơi.' },
-		    { MaDonThuoc: 'DT004', MaLuotKham: 'LK_002', MaThuoc: 'TH004', SoLuong: 21, LieuDung: 'Uống 1 viên trước ăn sáng 30 phút trong 21 ngày.' },
-		    { MaDonThuoc: 'DT005', MaLuotKham: 'LK_002', MaThuoc: 'TH002', SoLuong: 12, LieuDung: 'Uống 1 gói khi ợ nóng hoặc đau thượng vị.' },
-		    { MaDonThuoc: 'DT006', MaLuotKham: 'LK_003', MaThuoc: 'TH005', SoLuong: 10, LieuDung: 'Uống 1 viên mỗi tối trong 10 ngày.' },
-		    { MaDonThuoc: 'DT007', MaLuotKham: 'LK_003', MaThuoc: 'TH006', SoLuong: 1, LieuDung: 'Xịt mỗi bên mũi 2 lần, ngày 3 lần.' },
-		    { MaDonThuoc: 'DT008', MaLuotKham: 'LK_004', MaThuoc: 'TH007', SoLuong: 1, LieuDung: 'Súc miệng 15ml sau đánh răng, ngày 2 lần trong 7 ngày.' },
-		  ])
-	  const [labDetails, setLabDetails] = useState([
-	    {
-	      MaChiTietXN: 'CTXN_001',
-	      MaLuotKham: 'LK_001',
-	      MaDichVu: 'XN_MAU',
-	      KetQuaXetNghiem: 'Bạch cầu trong giới hạn bình thường, Hemoglobin 145 g/L.',
-	      MaXNV: 'XNV001',
-	      GiaCuoi: 50000,
-	      PaymentToken: 'PAY_MOCK_XN001',
-	      TrangThaiXetNghiem: 'Đã có kết quả',
-	    },
-	    {
-	      MaChiTietXN: 'CTXN_002',
-	      MaLuotKham: 'LK_001',
-	      MaDichVu: 'SA_O_BUNG',
-	      KetQuaXetNghiem: '',
-	      MaXNV: '',
-	      GiaCuoi: 60000,
-	      PaymentToken: 'PAY_MOCK_XN002',
-		      TrangThaiXetNghiem: 'Chưa thực hiện',
-		    },
-		    {
-		      MaChiTietXN: 'CTXN_003',
-		      MaLuotKham: 'LK_002',
-		      MaDichVu: 'XN_SINH_HOA',
-		      KetQuaXetNghiem: 'Men gan AST/ALT trong giới hạn, chức năng thận bình thường.',
-		      MaXNV: 'XNV002',
-		      GiaCuoi: 70000,
-		      PaymentToken: 'PAY_MOCK_XN003',
-		      TrangThaiXetNghiem: 'Đã có kết quả',
-		    },
-		    {
-		      MaChiTietXN: 'CTXN_004',
-		      MaLuotKham: 'LK_003',
-		      MaDichVu: 'XN_MAU',
-		      KetQuaXetNghiem: 'Bạch cầu tăng nhẹ, gợi ý tình trạng viêm cấp.',
-		      MaXNV: 'XNV001',
-		      GiaCuoi: 50000,
-		      PaymentToken: 'PAY_MOCK_XN004',
-		      TrangThaiXetNghiem: 'Đã có kết quả',
-		    },
-		    {
-		      MaChiTietXN: 'CTXN_005',
-		      MaLuotKham: 'LK_004',
-		      MaDichVu: 'XN_DUONG_HUYET',
-		      KetQuaXetNghiem: '',
-		      MaXNV: '',
-		      GiaCuoi: 16000,
-		      PaymentToken: 'PAY_MOCK_XN005',
-		      TrangThaiXetNghiem: 'Chưa thực hiện',
-		    },
-		  ])
-	  const [labTechnicians] = useState([
-	    { MaXNV: 'XNV001', HoTen: 'Trần Văn Cường' },
-	    { MaXNV: 'XNV002', HoTen: 'Vũ Hồng Ngọc' },
-	  ])
-	  const [treatmentSchedules, setTreatmentSchedules] = useState([
-    {
-      MaLichTrinh: 'LTDT_001',
-      MaLuotKham: 'LK_001',
-      MaDichVu: 'DT_RANG_TUY',
-      BuoiSo: 1,
-      NgayThucHien: '2026-06-02',
-      CaKham: 3,
-      TrangThai: 'Hoàn thành',
-    },
-    {
-      MaLichTrinh: 'LTDT_002',
-      MaLuotKham: 'LK_001',
-      MaDichVu: 'DT_RANG_TUY',
-      BuoiSo: 2,
-      NgayThucHien: '',
-      CaKham: '',
-      TrangThai: 'Chưa đặt lịch',
-    },
-	    {
-	      MaLichTrinh: 'LTDT_003',
-	      MaLuotKham: 'LK_001',
-      MaDichVu: 'DT_RANG_TUY',
-      BuoiSo: 3,
-      NgayThucHien: '',
-	      CaKham: '',
-	      TrangThai: 'Chưa đặt lịch',
-	    },
-	    {
-	      MaLichTrinh: 'LTDT_004',
-	      MaLuotKham: 'LK_002',
-	      MaDichVu: 'DT_TRUYEN_DICH',
-	      BuoiSo: 1,
-	      NgayThucHien: '2026-05-20',
-	      CaKham: 2,
-	      TrangThai: 'Hoàn thành',
-	    },
-	    {
-	      MaLichTrinh: 'LTDT_005',
-	      MaLuotKham: 'LK_002',
-	      MaDichVu: 'DT_TRUYEN_DICH',
-	      BuoiSo: 2,
-	      NgayThucHien: '2026-05-23',
-	      CaKham: 1,
-	      TrangThai: 'Đã đặt lịch',
-	    },
-	    {
-	      MaLichTrinh: 'LTDT_006',
-	      MaLuotKham: 'LK_003',
-	      MaDichVu: 'DT_KHIDUNG',
-	      BuoiSo: 1,
-	      NgayThucHien: '2026-04-24',
-	      CaKham: 3,
-	      TrangThai: 'Hoàn thành',
-	    },
-	    {
-	      MaLichTrinh: 'LTDT_007',
-	      MaLuotKham: 'LK_003',
-	      MaDichVu: 'DT_KHIDUNG',
-	      BuoiSo: 2,
-	      NgayThucHien: '',
-	      CaKham: '',
-	      TrangThai: 'Chưa đặt lịch',
-	    },
-	    {
-	      MaLichTrinh: 'LTDT_008',
-	      MaLuotKham: 'LK_004',
-	      MaDichVu: 'DT_HAN_RANG',
-	      BuoiSo: 1,
-	      NgayThucHien: '2026-04-01',
-	      CaKham: 4,
-	      TrangThai: 'Hoàn thành',
-	    },
-	    {
-	      MaLichTrinh: 'LTDT_009',
-	      MaLuotKham: 'LK_004',
-	      MaDichVu: 'DT_HAN_RANG',
-	      BuoiSo: 2,
-	      NgayThucHien: '',
-	      CaKham: '',
-	      TrangThai: 'Chưa đặt lịch',
-	    },
-	  ])
+	  const [bookings, setBookings] = useState([])
+  const [invoicesByAppointment, setInvoicesByAppointment] = useState({})
+  const [billingBusyId, setBillingBusyId] = useState('')
+	  const [diseases] = useState([])
+  const [visitRecords, setVisitRecords] = useState([])
+	  const [medicines] = useState([])
+  const [prescriptionDetails, setPrescriptionDetails] = useState([])
+  const [labDetails, setLabDetails] = useState([])
+	  const [labTechnicians] = useState([])
+  const [treatmentSchedules, setTreatmentSchedules] = useState([])
   const [bookingForm, setBookingForm] = useState({
     MaChiNhanh: 'CN_CG',
     MaDichVu: 'DV_KHAM_NOI',
-    NgayKham: '2026-06-05',
+    NgayKham: getTodayDateKey(),
     CaKham: '1',
     MaBacSi: 'BS001',
   })
@@ -390,6 +66,7 @@ export default function PatientDashboard({
 	  const [selectedVisitId, setSelectedVisitId] = useState('LK_001')
 	  const [paymentModal, setPaymentModal] = useState(null)
 	  const [isConfirmingPayment, setIsConfirmingPayment] = useState(false)
+	  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false)
 	  const [appointmentsLoading, setAppointmentsLoading] = useState(false)
 	  const [appointmentsError, setAppointmentsError] = useState('')
 	  const [medicalHistoryLoading, setMedicalHistoryLoading] = useState(false)
@@ -398,6 +75,7 @@ export default function PatientDashboard({
 	  const [appointmentPage, setAppointmentPage] = useState(0)
 	  const [medicalHistoryPage, setMedicalHistoryPage] = useState(0)
 	  const [isEditingContact, setIsEditingContact] = useState(false)
+	  const [isSavingContact, setIsSavingContact] = useState(false)
 	  const [contactForm, setContactForm] = useState({
 	    SDT: initialPatientProfile.SDT,
 	    DiaChi: initialPatientProfile.DiaChi,
@@ -409,11 +87,7 @@ export default function PatientDashboard({
 	    confirmPassword: '',
 	  })
 
-  const bhytCategories = [
-    { KyTuDauBHYT: 'TE', DoiTuongChinhSach: 'Trẻ em dưới 6 tuổi', TyLeHuong: 1 },
-    { KyTuDauBHYT: 'HT', DoiTuongChinhSach: 'Cán bộ Hưu trí', TyLeHuong: 0.95 },
-    { KyTuDauBHYT: 'DN', DoiTuongChinhSach: 'Người lao động doanh nghiệp', TyLeHuong: 0.8 },
-  ]
+  const bhytCategories = []
 
   const effectiveBranches = (catalogData?.branches || []).filter((branch) => branch.TrangThai !== 'inactive')
   const effectiveServices = (catalogData?.services || []).filter((service) => service.TrangThai !== 'inactive')
@@ -453,39 +127,45 @@ export default function PatientDashboard({
   const allKnownDoctorSchedules = effectiveDoctorSchedules
 
   const normalizeAppointmentRow = (appointment) => ({
-    MaLichHen: appointment.MaLichHen,
-    MaBenhAn: appointment.MaBenhAn || patient.MaBenhAn,
-    MaCauHinh: appointment.MaCauHinh || '',
-    MaDichVu: appointment.MaDichVu || '',
+    MaLichHen: appointment.id || appointment.MaLichHen,
+    MaBenhAn: appointment.patient_id || appointment.MaBenhAn || patient.MaBenhAn,
+    MaCauHinh: appointment.config_code || appointment.MaCauHinh || '',
+    MaDichVu: appointment.service_code || appointment.MaDichVu || '',
     TenDichVu: appointment.TenDichVu || '',
-    MaChiNhanh: appointment.MaChiNhanh || '',
+    MaChiNhanh: appointment.branch_code || appointment.MaChiNhanh || '',
     TenChiNhanh: appointment.TenChiNhanh || '',
-    NgayKham: appointment.NgayKham || '',
-    CaKham: appointment.CaKham || '',
+    NgayKham: appointment.date || appointment.NgayKham || '',
+    CaKham: appointment.shift || appointment.CaKham || '',
     STT: appointment.STT || appointment.STT_HangDoi || '',
-    MaBacSi: appointment.MaBacSi || '',
+    MaBacSi: appointment.doctor_code || appointment.MaBacSi || '',
     TenBacSi: appointment.TenBacSi || '',
     PaymentToken: appointment.PaymentToken || '',
     GiaCuoi: appointment.GiaCuoi || 0,
-    TrangThai: appointment.TrangThai || 'Chờ khám',
+    TrangThai: appointment.status === 'confirmed' ? 'Đã xác nhận' :
+      appointment.status === 'cancelled' ? 'Đã hủy' :
+      appointment.status === 'cancel_pending' ? 'Đang hủy' :
+      appointment.status === 'pending' ? 'Đang xác nhận' :
+      appointment.status === 'failed' ? 'Lỗi đặt lịch' :
+      appointment.legacy_status || appointment.TrangThai || 'Lịch sử',
+    apiStatus: appointment.status || '',
   })
 
   const loadPatientAppointments = async () => {
-    if (!patient.MaBenhAn) return
+    if (!patient.MaBenhAn || !identityAccessToken) return
 
     setAppointmentsLoading(true)
     setAppointmentsError('')
 
     try {
-      const response = await getPatientAppointments(patient.MaBenhAn)
+      const response = await getPatientAppointments(identityAccessToken)
       const result = await response.json()
 
-      if (!response.ok || !result?.success) {
-        throw new Error(result?.message || 'Không thể tải lịch hẹn của bệnh nhân.')
+      if (!response.ok) {
+        throw new Error(result?.detail || 'Không thể tải lịch hẹn của bệnh nhân.')
       }
 
-      if (Array.isArray(result.data)) {
-        setBookings(result.data.map(normalizeAppointmentRow))
+      if (Array.isArray(result)) {
+        setBookings(result.map(normalizeAppointmentRow))
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể tải lịch hẹn của bệnh nhân.'
@@ -494,6 +174,28 @@ export default function PatientDashboard({
     } finally {
       setAppointmentsLoading(false)
     }
+  }
+
+  const loadPatientInvoices = async () => {
+    if (!identityAccessToken) return
+    try {
+      const response = await getPatientInvoices(identityAccessToken)
+      const result = await response.json()
+      if (!response.ok || !Array.isArray(result)) {
+        throw new Error(typeof result?.detail === 'string' ? result.detail : 'Không thể tải hóa đơn.')
+      }
+      setInvoicesByAppointment(Object.fromEntries(result.map((invoice) => [invoice.appointment_id, invoice])))
+    } catch (error) {
+      console.warn('PATIENT_INVOICES_LOAD_FAILED', error)
+    }
+  }
+
+  const ensureInvoice = async (appointmentId) => {
+    const response = await createPatientInvoice(identityAccessToken, appointmentId)
+    const result = await response.json()
+    if (!response.ok) throw new Error(typeof result?.detail === 'string' ? result.detail : 'Không thể tạo hóa đơn.')
+    setInvoicesByAppointment((current) => ({ ...current, [appointmentId]: result }))
+    return result
   }
 
   const loadPatientNotifications = async () => {
@@ -604,7 +306,7 @@ export default function PatientDashboard({
     setMedicalHistoryError('')
 
     try {
-      const response = await getPatientMedicalHistory(patient.MaBenhAn)
+      const response = await getPatientMedicalHistory(patient.MaBenhAn, identityAccessToken)
       const result = await response.json()
 
       if (!response.ok || !result?.success) {
@@ -633,8 +335,8 @@ export default function PatientDashboard({
     }
   }
 
-  const patientBookingStartDate = '2026-06-05'
-  const patientBookingEndDate = '2026-07-01'
+  const patientBookingStartDate = getTodayDateKey()
+  const patientBookingEndDate = getFutureDateKey(30)
   const weekDayHeaders = [
     { label: 'Thứ Hai', shortLabel: 'T2', dayIndex: 1 },
     { label: 'Thứ Ba', shortLabel: 'T3', dayIndex: 2 },
@@ -721,7 +423,7 @@ export default function PatientDashboard({
   const formatMoney = (value) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value)
 
-  const toDateKey = (date) => date.toISOString().slice(0, 10)
+  const toDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
   const parseDateKey = (dateKey) => new Date(`${dateKey}T00:00:00`)
 
@@ -1011,9 +713,10 @@ export default function PatientDashboard({
 
   useEffect(() => {
     loadPatientAppointments()
+    loadPatientInvoices()
     loadMedicalHistory()
     loadPatientNotifications()
-  }, [patient.MaBenhAn])
+  }, [patient.MaBenhAn, identityAccessToken])
 
   const bookingAvailableShifts = getAvailableShifts(bookingForm)
   const bookingAvailableDoctors = getAvailableDoctorsForShift({
@@ -1147,24 +850,28 @@ export default function PatientDashboard({
 	    setIsEditingContact(false)
 	  }
 
-	  const handleSaveContact = () => {
-	    const nextPatient = {
-	      ...patient,
-	      SDT: contactForm.SDT.trim(),
-	      DiaChi: contactForm.DiaChi.trim(),
-	    }
-
-	    setPatient(nextPatient)
-	    setPatientDirectory((current) =>
-	      current.map((item) => (item.MaBenhAn === nextPatient.MaBenhAn ? nextPatient : item)),
-	    )
-	    onUpdateUser?.({
-	      SDT: nextPatient.SDT,
-	      DiaChi: nextPatient.DiaChi,
-	      id: nextPatient.SDT,
-	    })
-	    setIsEditingContact(false)
-	    showNotification?.('Cập nhật thông tin liên hệ thành công!')
+	  const handleSaveContact = async () => {
+      const phone = contactForm.SDT.trim()
+      if (phone && !/^\+?[0-9]{9,15}$/.test(phone)) {
+        showNotification?.('Số điện thoại phải có 9–15 chữ số.', 'error')
+        return
+      }
+      if (!identityAccessToken) {
+        showNotification?.('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'error')
+        return
+      }
+      setIsSavingContact(true)
+      try {
+        const updated = await updatePatientProfile(identityAccessToken, { phone: phone || null })
+        setPatient((current) => ({ ...current, SDT: updated.phone || '' }))
+        onUpdateUser?.({ SDT: updated.phone || '' })
+        setIsEditingContact(false)
+        showNotification?.('Đã cập nhật số điện thoại tại Registry.')
+      } catch (error) {
+        showNotification?.(error instanceof Error ? error.message : 'Không thể cập nhật số điện thoại.', 'error')
+      } finally {
+        setIsSavingContact(false)
+      }
 	  }
 
 	  const handlePasswordFormChange = (field, value) => {
@@ -1200,7 +907,7 @@ export default function PatientDashboard({
     setTreatmentDrafts((current) => {
       const currentDraft = current[maLichTrinh] || {
         MaChiNhanh: effectiveBranches[0]?.MaChiNhanh || '',
-        NgayKham: '2026-06-05',
+        NgayKham: getTodayDateKey(),
         CaKham: '',
         MaBacSi: '',
       }
@@ -1228,7 +935,7 @@ export default function PatientDashboard({
       ? getAvailableDoctorsForShift({
 	        maChiNhanh: currentDraft?.MaChiNhanh || effectiveBranches[0]?.MaChiNhanh || '',
           maDichVu: treatment.MaDichVu,
-          ngayKham: currentDraft?.NgayKham || '2026-06-05',
+          ngayKham: currentDraft?.NgayKham || getTodayDateKey(),
           caKham: value,
         })
       : []
@@ -1256,7 +963,7 @@ export default function PatientDashboard({
   const startTreatmentBooking = (treatment) => {
     const initialDraft = {
       MaChiNhanh: effectiveBranches[0]?.MaChiNhanh || '',
-      NgayKham: '2026-06-05',
+      NgayKham: getTodayDateKey(),
       CaKham: '',
       MaBacSi: '',
     }
@@ -1276,7 +983,7 @@ export default function PatientDashboard({
     setActiveTreatmentId(treatment.MaLichTrinh)
   }
 
-  const openBookingPayment = () => {
+  const openBookingPayment = async () => {
     if (!bookingForm.CaKham || !bookingForm.MaBacSi) {
       showNotification?.('Hiện chưa có ca trống phù hợp. Vui lòng chọn ngày hoặc chi nhánh khác.', 'error')
       return
@@ -1288,21 +995,39 @@ export default function PatientDashboard({
       return
     }
 
-    setPaymentModal({
-      type: 'new-booking',
-      invoice: buildInvoice({
-        maDichVu: bookingForm.MaDichVu,
-        maChiNhanh: bookingForm.MaChiNhanh,
-        ngayKham: bookingForm.NgayKham,
-        caKham: Number(bookingForm.CaKham),
-      }),
-      payload: {
-        ...bookingForm,
-        MaCauHinh: config.MaCauHinh,
-        CaKham: Number(bookingForm.CaKham),
-        MaBacSi: bookingForm.MaBacSi,
-      },
-    })
+    setIsCheckingAvailability(true)
+    try {
+      const availability = await getSchedulingAvailability({
+        configCode: config.MaCauHinh,
+        doctorCode: bookingForm.MaBacSi,
+        date: bookingForm.NgayKham,
+        shift: bookingForm.CaKham,
+      })
+      if (availability.available < 1) {
+        throw new Error('Ca khám này đã hết chỗ hoặc bác sĩ không còn lịch trực. Vui lòng chọn ca khác.')
+      }
+      setPaymentModal({
+        type: 'new-booking',
+        idempotencyKey: crypto.randomUUID(),
+        availability: availability.available,
+        invoice: buildInvoice({
+          maDichVu: bookingForm.MaDichVu,
+          maChiNhanh: bookingForm.MaChiNhanh,
+          ngayKham: bookingForm.NgayKham,
+          caKham: Number(bookingForm.CaKham),
+        }),
+        payload: {
+          ...bookingForm,
+          MaCauHinh: config.MaCauHinh,
+          CaKham: Number(bookingForm.CaKham),
+          MaBacSi: bookingForm.MaBacSi,
+        },
+      })
+    } catch (error) {
+      showNotification?.(error instanceof Error ? error.message : 'Không thể kiểm tra chỗ trống.', 'error')
+    } finally {
+      setIsCheckingAvailability(false)
+    }
   }
 
   const openTreatmentPayment = (treatment) => {
@@ -1344,37 +1069,35 @@ export default function PatientDashboard({
 	    if (paymentModal.type === 'new-booking') {
 	      setIsConfirmingPayment(true)
 	      try {
-        const response = await bookAndPay({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ma_benh_an: patient.MaBenhAn,
-            ma_cau_hinh: paymentModal.payload.MaCauHinh,
-            ngay_kham: paymentModal.invoice.ngayKham,
-            ca_kham: Number(paymentModal.invoice.caKham),
-            ma_bac_si: paymentModal.payload.MaBacSi,
-          }),
+        if (!identityAccessToken) throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
+        const response = await createPatientAppointment(identityAccessToken, {
+          config_code: paymentModal.payload.MaCauHinh,
+          doctor_code: paymentModal.payload.MaBacSi,
+          date: paymentModal.invoice.ngayKham,
+          shift: Number(paymentModal.invoice.caKham),
+          idempotency_key: paymentModal.idempotencyKey,
         })
         const result = await response.json()
 
-        if (!response.ok || !result?.success) {
-          throw new Error(result?.message || 'Không thể tạo lịch hẹn.')
+        if (!response.ok) {
+          throw new Error(typeof result?.detail === 'string' ? result.detail : 'Không thể tạo lịch hẹn.')
         }
 
-        if (result.data) {
-          setBookings((current) => {
-            const nextBooking = normalizeAppointmentRow({
-              ...result.data,
-              MaDichVu: result.data.MaDichVu || paymentModal.invoice.maDichVu,
-              MaChiNhanh: result.data.MaChiNhanh || paymentModal.invoice.maChiNhanh,
-            })
-            return [nextBooking, ...current.filter((booking) => booking.MaLichHen !== nextBooking.MaLichHen)]
-          })
+        const nextBooking = normalizeAppointmentRow(result)
+        setBookings((current) => [nextBooking, ...current.filter((booking) => booking.MaLichHen !== nextBooking.MaLichHen)])
+        let invoiceCreated = false
+        try {
+          await ensureInvoice(result.id)
+          invoiceCreated = true
+        } catch (invoiceError) {
+          console.warn('PATIENT_INVOICE_CREATE_FAILED', invoiceError)
         }
-
         await loadPatientAppointments()
         setPaymentModal(null)
-        showNotification?.('Thanh toán thành công! Lịch hẹn của bạn đã được lưu vào hệ thống.')
+        showNotification?.(invoiceCreated
+          ? 'Đã đặt lịch và tạo hóa đơn chờ thanh toán giả lập.'
+          : 'Đã đặt lịch nhưng chưa tạo được hóa đơn. Mở “Lịch hẹn của tôi” để thử lại.',
+        invoiceCreated ? 'success' : 'error')
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Không thể tạo lịch hẹn.'
         showNotification?.(message, 'error')
@@ -1398,7 +1121,7 @@ export default function PatientDashboard({
 	            ca_kham: Number(paymentModal.invoice.caKham),
 	            ma_bac_si: paymentModal.payload.MaBacSi,
 	          }),
-	        })
+	        }, identityAccessToken)
 	        const result = await response.json()
 
 	        if (!response.ok || !result?.success) {
@@ -1437,10 +1160,11 @@ export default function PatientDashboard({
 	        }
 
 	        await loadPatientAppointments()
+	        await loadPatientInvoices()
 	        await loadMedicalHistory()
 	        setActiveTreatmentId('')
 	        setPaymentModal(null)
-	        showNotification?.('Thanh toán thành công! Buổi điều trị đã được xác nhận.')
+	        showNotification?.('Đã đặt buổi điều trị và tạo hóa đơn chờ thanh toán. Vào Lịch hẹn của tôi để thanh toán giả lập.')
 	      } catch (error) {
 	        const message = error instanceof Error ? error.message : 'Không thể đặt lịch điều trị.'
 	        showNotification?.(message, 'error')
@@ -1450,41 +1174,45 @@ export default function PatientDashboard({
 	      return
 	    }
 
-	    const paymentToken = `PAY_MOCK_${Math.floor(100000 + Math.random() * 900000)}`
-    const newBooking = {
-      MaLichHen: `LH_${String(bookings.length + 1).padStart(3, '0')}`,
-      MaBenhAn: patient.MaBenhAn,
-      MaCauHinh: paymentModal.payload.MaCauHinh,
-      MaDichVu: paymentModal.invoice.maDichVu,
-      MaChiNhanh: paymentModal.invoice.maChiNhanh,
-      NgayKham: paymentModal.invoice.ngayKham,
-      CaKham: paymentModal.invoice.caKham,
-      MaBacSi: paymentModal.payload.MaBacSi,
-      PaymentToken: paymentToken,
-      TrangThai: 'Đã xác nhận',
+  }
+
+  const cancelBooking = async (booking) => {
+    if (!identityAccessToken || !window.confirm(`Hủy lịch hẹn ${booking.MaLichHen}?`)) return
+    try {
+      const response = await cancelPatientAppointment(identityAccessToken, booking.MaLichHen)
+      const result = await response.json()
+      if (!response.ok) throw new Error(typeof result?.detail === 'string' ? result.detail : 'Không thể hủy lịch hẹn.')
+      setBookings((current) => current.map((item) => item.MaLichHen === booking.MaLichHen ? normalizeAppointmentRow(result) : item))
+      await loadPatientAppointments()
+      showNotification?.('Đã hủy lịch hẹn.')
+    } catch (error) {
+      showNotification?.(error instanceof Error ? error.message : 'Không thể hủy lịch hẹn.', 'error')
     }
+  }
 
-    setBookings((current) => [...current, newBooking])
-
-    if (paymentModal.type === 'treatment-booking') {
-      setTreatmentSchedules((current) =>
-        current.map((item) =>
-          item.MaLichTrinh === paymentModal.payload.MaLichTrinh
-	            ? {
-	                ...item,
-	                NgayThucHien: paymentModal.invoice.ngayKham,
-	                CaKham: paymentModal.invoice.caKham,
-	                MaBacSi: paymentModal.payload.MaBacSi,
-	                TrangThai: 'Đã đặt lịch',
-	              }
-            : item,
-        ),
-      )
-      setActiveTreatmentId('')
+  const handleBillingAction = async (booking) => {
+    if (!identityAccessToken) return
+    setBillingBusyId(booking.MaLichHen)
+    try {
+      const existing = invoicesByAppointment[booking.MaLichHen]
+      if (!existing) {
+        await ensureInvoice(booking.MaLichHen)
+        showNotification?.('Đã tạo hóa đơn chờ thanh toán giả lập.')
+        return
+      }
+      const invoice = existing
+      if (invoice.status === 'pending' && window.confirm('Ghi nhận thanh toán giả lập? Đây không phải giao dịch ngân hàng.')) {
+        const response = await simulatePatientPayment(identityAccessToken, invoice.id)
+        const result = await response.json()
+        if (!response.ok) throw new Error(typeof result?.detail === 'string' ? result.detail : 'Không thể ghi nhận thanh toán giả lập.')
+        setInvoicesByAppointment((current) => ({ ...current, [booking.MaLichHen]: result }))
+        showNotification?.('Đã ghi nhận thanh toán giả lập trên Billing service.')
+      }
+    } catch (error) {
+      showNotification?.(error instanceof Error ? error.message : 'Không thể xử lý hóa đơn.', 'error')
+    } finally {
+      setBillingBusyId('')
     }
-
-    setPaymentModal(null)
-    showNotification?.('Thanh toán thành công! Lịch hẹn của bạn đã được hệ thống xác nhận.')
   }
 
   const renderPaymentModal = () => {
@@ -1495,8 +1223,8 @@ export default function PatientDashboard({
         <div className="payment-modal">
           <div className="payment-modal-header">
             <div>
-              <span>Cổng thanh toán QR</span>
-              <h2>Xác nhận thanh toán</h2>
+              <span>{paymentModal.type === 'new-booking' ? 'Appointment service' : 'Cổng thanh toán QR'}</span>
+              <h2>{paymentModal.type === 'new-booking' ? 'Xác nhận đặt lịch' : 'Xác nhận thanh toán'}</h2>
             </div>
             <button type="button" onClick={() => setPaymentModal(null)} disabled={isConfirmingPayment}>
               Đóng
@@ -1522,20 +1250,22 @@ export default function PatientDashboard({
               <span>Giá gốc</span>
               <strong>{formatMoney(paymentModal.invoice.giaGoc)}</strong>
             </div>
-            <div>
+            {paymentModal.type !== 'new-booking' && <div>
               <span>BHYT giảm</span>
               <strong>{formatMoney(paymentModal.invoice.bhytAmount)}</strong>
-            </div>
+            </div>}
             <div>
-              <span>Giá cuối thực trả</span>
-              <strong>{formatMoney(paymentModal.invoice.finalAmount)}</strong>
+              <span>{paymentModal.type === 'new-booking' ? 'Giá niêm yết tham khảo' : 'Chi phí dự kiến'}</span>
+              <strong>{formatMoney(paymentModal.type === 'new-booking' ? paymentModal.invoice.giaGoc : paymentModal.invoice.finalAmount)}</strong>
             </div>
           </div>
 
-          <div className="qr-box">
+          {paymentModal.type !== 'new-booking' && <div className="qr-box">
             <div className="qr-grid" />
             <span>QR chuyển khoản giả lập</span>
-          </div>
+          </div>}
+
+          {paymentModal.type === 'new-booking' && <p>Còn {paymentModal.availability} chỗ tại thời điểm kiểm tra. Thao tác này chỉ xác nhận lịch hẹn; chưa thu hoặc xác nhận thanh toán.</p>}
 
           <button
             type="button"
@@ -1543,7 +1273,7 @@ export default function PatientDashboard({
             onClick={confirmMockPayment}
             disabled={isConfirmingPayment}
           >
-            Bấm vào đây để giả lập đã chuyển khoản thành công
+            {isConfirmingPayment ? 'Đang xử lý...' : paymentModal.type === 'new-booking' ? 'Xác nhận đặt lịch' : 'Bấm vào đây để giả lập đã chuyển khoản thành công'}
           </button>
         </div>
       </div>
@@ -1605,14 +1335,6 @@ export default function PatientDashboard({
                       const schedule = date.isInBookingRange
                         ? getDoctorScheduleForGridCell({ dateKey: date.dateKey, shift })
                         : null
-                      const remainingSlots = schedule
-                        ? getRemainingSlots({
-                            maChiNhanh: bookingForm.MaChiNhanh,
-                            maDichVu: bookingForm.MaDichVu,
-                            ngayKham: date.dateKey,
-                            caKham: shift,
-                          })
-                        : 0
                       const isSelected =
                         bookingForm.NgayKham === date.dateKey &&
                         Number(bookingForm.CaKham) === Number(shift)
@@ -1627,7 +1349,7 @@ export default function PatientDashboard({
                             >
                               <strong>Ca {shift}</strong>
                               <span>{getWeekdayLabel(date.dateKey)}</span>
-                              <em>Còn {remainingSlots} slot</em>
+                              <em>Kiểm tra chỗ khi xác nhận</em>
                             </button>
                           ) : (
                             <span className="patient-booking-slot-empty">-</span>
@@ -1648,6 +1370,7 @@ export default function PatientDashboard({
       <div className="patient-card">
         <h2>Đặt lịch khám mới</h2>
         <p>Chọn dịch vụ khám lâm sàng rồi đặt theo khung giờ mong muốn hoặc chọn thẳng bác sĩ yêu thích.</p>
+        {effectiveDoctorSchedules.length === 0 && <p className="auth-catalog-error">Chưa có lịch trực trong 30 ngày tới. Vui lòng liên hệ cơ sở để xếp lịch khám.</p>}
 
         <div className="booking-method-tabs">
           <button
@@ -1826,16 +1549,14 @@ export default function PatientDashboard({
         )}
 
         <div id="patient-booking-invoice" className="patient-invoice-preview">
-          <strong>Xem trước hóa đơn</strong>
+           <strong>Thông tin lịch và giá tham khảo</strong>
           {canStartPayment && selectedDoctor && (
             <span>
               Lịch chọn: {bookingForm.NgayKham} - {getShiftTimeLabel(bookingForm.CaKham)} - Bác sĩ{' '}
               {selectedDoctor.HoTen}
             </span>
           )}
-	          <span>Giá gốc: {formatMoney(invoice.giaGoc)}</span>
-	          <span>BHYT giảm: {formatMoney(invoice.bhytAmount)}</span>
-	          <span>Giá cuối: {formatMoney(invoice.finalAmount)}</span>
+	          <span>Giá niêm yết: {formatMoney(invoice.giaGoc)} (chưa xác minh BHYT, chưa thanh toán)</span>
 	          {!selectedBranchConfig && (
 	            <span className="auth-catalog-error">
 	              Dịch vụ này chưa được cấu hình tại chi nhánh đã chọn.
@@ -1847,9 +1568,9 @@ export default function PatientDashboard({
           type="button"
           className="patient-primary-button"
           onClick={openBookingPayment}
-          disabled={!canStartPayment}
+          disabled={!canStartPayment || isCheckingAvailability}
         >
-          Tiến hành thanh toán
+          {isCheckingAvailability ? 'Đang kiểm tra chỗ trống...' : 'Xác nhận đặt lịch'}
         </button>
       </div>
     )
@@ -1880,7 +1601,8 @@ export default function PatientDashboard({
 	              <th>Ngày</th>
 	              <th>Ca</th>
 	              <th>Trạng thái</th>
-	              <th>PaymentToken</th>
+              <th>Thanh toán</th>
+              <th>Thao tác</th>
 	            </tr>
 	          </thead>
 	          <tbody>
@@ -1893,12 +1615,24 @@ export default function PatientDashboard({
 	                <td>{booking.NgayKham}</td>
 	                <td>Ca {booking.CaKham}</td>
 	                <td>{booking.TrangThai}</td>
-	                <td>{booking.PaymentToken}</td>
+                <td>{invoicesByAppointment[booking.MaLichHen]?.status === 'paid'
+                  ? `Giả lập đã trả (${invoicesByAppointment[booking.MaLichHen].payment_token})`
+                  : invoicesByAppointment[booking.MaLichHen]?.status === 'pending' ? 'Chờ thanh toán giả lập' : 'Chưa có hóa đơn'}</td>
+                <td>
+                  {booking.apiStatus === 'confirmed' && booking.NgayKham >= getTodayDateKey() && invoicesByAppointment[booking.MaLichHen]?.status !== 'paid' && (
+                    <>
+                      <button type="button" className="patient-secondary-button" onClick={() => handleBillingAction(booking)} disabled={billingBusyId === booking.MaLichHen}>
+                        {invoicesByAppointment[booking.MaLichHen] ? 'Thanh toán giả lập' : 'Tạo hóa đơn'}
+                      </button>
+                      <button type="button" className="patient-secondary-button" onClick={() => cancelBooking(booking)}>Hủy lịch</button>
+                    </>
+                  )}
+                </td>
 	              </tr>
 	            ))}
 	            {filteredBookings.length === 0 && (
 	              <tr>
-	                <td colSpan="8" className="patient-empty-row">
+                <td colSpan="9" className="patient-empty-row">
 	                  Không tìm thấy lịch hẹn phù hợp.
 	                </td>
 	              </tr>
@@ -1913,7 +1647,7 @@ export default function PatientDashboard({
 	  const renderTreatmentBookingControl = (treatment) => {
 	    const draft = treatmentDrafts[treatment.MaLichTrinh] || {
 	      MaChiNhanh: effectiveBranches[0]?.MaChiNhanh || '',
-	      NgayKham: '2026-06-05',
+	      NgayKham: getTodayDateKey(),
 	      CaKham: '',
 	      MaBacSi: '',
     }
@@ -2262,8 +1996,8 @@ export default function PatientDashboard({
 	              </button>
 	            ) : (
 	              <>
-	                <button type="button" className="patient-primary-button" onClick={handleSaveContact}>
-	                  Lưu thay đổi
+	                <button type="button" className="patient-primary-button" onClick={handleSaveContact} disabled={isSavingContact}>
+	                  {isSavingContact ? 'Đang lưu...' : 'Lưu thay đổi'}
 	                </button>
 	                <button type="button" className="patient-plain-button" onClick={handleCancelEditContact}>
 	                  Hủy bỏ
@@ -2315,8 +2049,7 @@ export default function PatientDashboard({
 	            <input
 	              type="text"
 	              value={contactForm.DiaChi}
-	              disabled={!isEditingContact}
-	              onChange={(event) => setContactForm((current) => ({ ...current, DiaChi: event.target.value }))}
+	              disabled
 	            />
 	          </label>
 	        </div>

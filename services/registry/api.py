@@ -39,6 +39,11 @@ class PatientListResponse(BaseModel):
     offset: int
 
 
+class PatientLookupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    patient_ids: list[str] = Field(min_length=1, max_length=500)
+
+
 StaffRole = Literal["doctor", "letan", "xnv"]
 
 
@@ -181,6 +186,16 @@ async def ensure_patient(
     except ProfileConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return PatientResponse.model_validate(patient)
+
+
+@router.post("/internal/patients/lookup", response_model=list[PatientResponse],
+             dependencies=[Depends(require_service_token)])
+async def lookup_patients(
+    body: PatientLookupRequest,
+    repository: Annotated[RegistryRepository, Depends(get_repository)],
+) -> list[PatientResponse]:
+    rows = await repository.patients_by_ids(list(set(body.patient_ids)))
+    return [PatientResponse.model_validate(row) for row in rows]
 
 
 @router.put("/internal/staff/{account_id}", response_model=StaffResponse,

@@ -1,26 +1,38 @@
-# Medicare — hệ thống đặt lịch khám và quản lý dịch vụ phòng khám
+# Medicare — chạy dự án trên máy mới
 
-Repo này đang **chuyển đổi từ backend nguyên khối sang kiến trúc 7 microservice**. Bản chạy local gồm một frontend React/Vite, bảy ứng dụng FastAPI độc lập và một container MySQL chứa bảy database riêng. Đây là bản phát triển/demo, **chưa phải luồng khám bệnh hoàn chỉnh hoặc môi trường production**.
+Hướng dẫn cho Windows/PowerShell. Cần **Git, Docker Desktop đang chạy và Node.js 20.19+ hoặc 22.12+**. Không cần cài Python: 7 microservice chạy trong Docker. Backend cũ trong `Backend/` không cần khởi động.
 
-## Bắt đầu nhanh trên Windows
-
-Cần Git, Docker Desktop đang chạy và Node.js phù hợp với Vite (`20.19+` hoặc `22.12+`). Không cần cài Python nếu chỉ chạy các service qua Docker; Python 3.12 dùng cho script nhập dữ liệu và chạy test local.
-
-Nếu cần **đúng dữ liệu trên máy xuất**, nhận file dump qua kênh riêng và làm theo [hướng dẫn import MySQL](data/mysql/README.md) **trước khi chạy toàn bộ service**. File dump không có trong repo public.
-
-Thành viên mới có thể làm lần lượt theo [hướng dẫn clone, import dữ liệu và chạy toàn hệ thống](docs/team-setup.md).
-
-Nhóm 2 người có thể theo dõi phần đã làm và các task còn lại trong [lộ trình từ chuyển đổi đến nghiệm thu](docs/roadmap-2-person.md).
+## 1. Clone code và nhận dữ liệu
 
 ```powershell
-git clone https://github.com/ptva2101/Clinic-Chain-Appointment-and-Medical-Service-Management-System.git
+git clone --branch anhhuy080905 https://github.com/ptva2101/Clinic-Chain-Appointment-and-Medical-Service-Management-System.git
 cd Clinic-Chain-Appointment-and-Medical-Service-Management-System
-Copy-Item .env.example .env
-docker compose up -d --build
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+Nhận riêng file `medicare-7db-2026-10-14.sql.gz` từ người quản lý nhóm và đặt tại `data/mysql/medicare-7db-2026-10-14.sql.gz`. File chứa dữ liệu cá nhân nên **không có trên GitHub và không được commit**. Không cần xin `.env` của máy cũ; hỏi thông tin đăng nhập qua kênh riêng. `.env` không đổi mật khẩu đã có trong database.
+
+## 2. Import MySQL và chạy 7 service
+
+**Chỉ import trên MySQL volume mới/chưa có dữ liệu cần giữ.** Import lại có thể ghi đè dữ liệu đã tạo trên máy bạn.
+
+```powershell
+$dump = 'data/mysql/medicare-7db-2026-10-14.sql.gz'
+if (-not (Test-Path $dump)) { throw 'Chưa có file dump được gửi riêng.' }
+if ((Get-FileHash $dump -Algorithm SHA256).Hash -ne '397239D884A733FEEAACA47FC5441D00DE9CF5014E34CA4D141470320FE924BC') { throw 'File dump không đúng bản đã kiểm tra.' }
+docker compose up -d --wait mysql
+docker compose cp $dump mysql:/tmp/medicare-7db-2026-10-14.sql.gz
+docker compose exec -T mysql sh -c 'gzip -t /tmp/medicare-7db-2026-10-14.sql.gz && gzip -dc /tmp/medicare-7db-2026-10-14.sql.gz | MYSQL_PWD=$MYSQL_ROOT_PASSWORD mysql -uroot'
+docker compose up -d --build --wait
+docker compose exec scheduling python -m demo_import.shift_schedule_oct2026 --apply
 docker compose ps
 ```
 
-Ở terminal thứ hai, trong thư mục gốc repo:
+Lệnh `shift_schedule_oct2026 --apply` dời **248 ca trực demo** từ 01/06–01/07 sang 01/10–01/11/2026 như máy hiện tại; chạy lại sẽ không dời lần nữa. Lịch hẹn và bệnh án cũ vẫn là dữ liệu lịch sử. Nếu không có file dump, có thể chạy `docker compose up -d --build --wait` để tạo database rỗng, nhưng sẽ không có sẵn tài khoản và dữ liệu của nhóm.
+
+## 3. Chạy giao diện
+
+Mở PowerShell thứ hai tại thư mục repo:
 
 ```powershell
 cd Frontend
@@ -28,53 +40,8 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-Mở `http://127.0.0.1:5173/`. Kiểm tra một service bằng `Invoke-RestMethod http://127.0.0.1:8001/ready`; đổi `8001` sang cổng khác trong bảng dưới đây. Tài liệu OpenAPI tương tác ở `http://127.0.0.1:8001/docs` và tương tự cho các service còn lại.
+Mở **http://127.0.0.1:5173/**. API của 7 service ở cổng `8001`–`8007`; ví dụ kiểm tra `http://127.0.0.1:8001/ready`.
 
-Sau khi import, tài khoản admin và các tài khoản khác dùng mật khẩu có tại thời điểm export; hỏi người quản lý nhóm qua kênh riêng nếu chưa biết mật khẩu. `IDENTITY_ADMIN_USERNAME` và `IDENTITY_ADMIN_PASSWORD` trong `.env` chỉ tạo admin **khi database chưa có admin**, không đổi mật khẩu của admin đã import. Đổi các secret mẫu trước khi chia sẻ môi trường. File `.env` không được commit.
+Những lần sau chỉ cần `docker compose up -d` ở gốc repo và `npm.cmd run dev` trong `Frontend/`; **không import lại dump**. `docker compose down` giữ dữ liệu MySQL, còn `docker compose down -v` **xóa volume và dữ liệu**.
 
-## Từ repo cũ sang microservice
-
-`Backend/` là backend FastAPI nguyên khối của repo cũ. Nghiệp vụ đang được chuyển dần sang `services/`; mỗi service sở hữu schema và database của mình, trao đổi qua API thay vì truy vấn database của service khác.
-
-| Service | Cổng local | Database | Phần đã có |
-| --- | ---: | --- | --- |
-| Identity | 8001 | `identity_db` | Đăng ký/đăng nhập, quản lý tài khoản và phiên |
-| Registry | 8002 | `registry_db` | Hồ sơ bệnh nhân/nhân viên, chi nhánh và danh mục dịch vụ |
-| Scheduling | 8003 | `scheduling_db` | Lịch trực, khả dụng slot và giữ chỗ tạm |
-| Appointment | 8004 | `appointment_db` | API đặt/hủy lịch, điều phối giữ và xác nhận slot tại Scheduling |
-| Billing | 8005 | `billing_db` | Khung service và tra cứu bản ghi lịch sử; nghiệp vụ thanh toán chưa chuyển đầy đủ |
-| Clinical | 8006 | `clinical_db` | Khung service và tra cứu bản ghi lịch sử; nghiệp vụ khám chưa chuyển đầy đủ |
-| Laboratory | 8007 | `laboratory_db` | Khung service và tra cứu bản ghi lịch sử; nghiệp vụ xét nghiệm chưa chuyển đầy đủ |
-
-MySQL trong Docker được mở ra máy host ở `127.0.0.1:3307`; dữ liệu lưu trong Docker volume `mysql_data`. `docker compose down` dừng container nhưng giữ dữ liệu. **Không dùng `docker compose down -v` nếu cần giữ dữ liệu**, vì lệnh đó xóa volume.
-
-Frontend dùng các API trong `Frontend/src/api/`. Đăng nhập/hồ sơ/danh mục/lịch trực đã gọi service mới. Tuy nhiên, đặt lịch trên giao diện, check-in, báo cáo, khám và xét nghiệm vẫn còn gọi backend cũ tại `http://127.0.0.1:8000` qua `Frontend/src/api/legacy.js`. `Backend/` **không nằm trong `compose.yaml`**; database `clinic` mà backend cũ yêu cầu cũng không được Compose tạo. Vì vậy quickstart ở trên chạy được phần microservice và giao diện, nhưng một số màn hình nghiệp vụ sẽ báo lỗi nếu không có môi trường backend cũ riêng. API Appointment mới có tại cổng 8004, song frontend chưa chuyển toàn bộ luồng đặt lịch sang API này.
-
-## Dữ liệu khi clone
-
-Repo cũ có dữ liệu **mẫu/mô phỏng** trong `Backend/hospital.db`, `Backend/init_db.py`, các file SQL và một số mảng frontend. `hospital.db` là SQLite cũ; bảy service mới **không đọc file này khi chạy**. Bản dump MySQL của cả 7 service **không nằm trong repo public** vì có dữ liệu cá nhân; người quản lý nhóm gửi riêng file `medicare-7db-2026-10-14.sql.gz`. Sau khi clone, làm theo [hướng dẫn import](data/mysql/README.md) trên **MySQL volume mới** để có cùng dữ liệu ở thời điểm export. Đây là bản chụp tĩnh, không đồng bộ thay đổi sau này.
-
-Nếu cần bộ dữ liệu demo cũ, làm theo [hướng dẫn nhập dữ liệu lịch sử](docs/demo-history-import.md). Công cụ kiểm kê trước khi ghi, nhập bản ghi vào đúng service và đánh dấu dữ liệu cũ là lịch sử/mẫu; công cụ kích hoạt tài khoản nhân viên mẫu là bước riêng, chỉ dành cho local. Không dùng dữ liệu hoặc mật khẩu mẫu cho bệnh nhân thật. Cần clone đầy đủ lịch sử Git để khôi phục cả dữ liệu mẫu đã bị xóa khỏi mã nguồn hiện tại.
-
-## Kiểm tra và tài liệu
-
-```powershell
-docker compose ps
-Invoke-RestMethod http://127.0.0.1:8001/ready
-Invoke-RestMethod http://127.0.0.1:8004/ready
-```
-
-Chạy test Python trong image, không cần cài Python trên máy:
-
-```powershell
-docker build --target test -t medicare-services-test ./services
-docker run --rm medicare-services-test
-```
-
-Kiểm tra frontend: trong `Frontend/`, chạy `npm.cmd run build`. Bài kiểm thử tải k6 hiện có tại `services/load/scheduling.js` chỉ đo API **GET lịch trực** của Scheduling; chưa chứng minh SLA cho toàn bộ luồng đặt lịch.
-
-Tài liệu chi tiết: [nền tảng microservice](docs/microservices-base.md), [Identity](docs/identity-service.md), [Registry](docs/registry-service.md), [Scheduling](docs/scheduling-service.md), [Appointment](docs/appointment-service.md) và [ranh giới frontend](docs/frontend-services.md). Một số tài liệu cũ mô tả trạng thái của thời điểm triển khai trước đó; khi có khác biệt, kiểm tra mã nguồn và OpenAPI đang chạy.
-
-## Nguồn gốc dự án
-
-Dự án Medicare ban đầu là bài tập lớn môn Phân tích và Thiết kế Hệ thống Thông tin, Đại học Công nghệ — Đại học Quốc gia Hà Nội. Thành viên được ghi trong README gốc: Trần Phương Phương, Nguyễn Hoàng Hà Anh, Phạm Ngọc Huyền và Phạm Thúc Việt Anh. Phần chuyển đổi microservice trong nhánh này tiếp tục phát triển từ repo đó.
+Git chỉ đồng bộ code. Dump ngày 14/10/2026 là bản chụp tĩnh; thay đổi dữ liệu sau thời điểm đó trên máy người xuất **không tự sang máy khác**. Muốn giống máy hiện tại 100%, cần người quản lý xuất **dump mới** và gửi riêng sau khi đã commit/push code. Xem [hướng dẫn import chi tiết](data/mysql/README.md) khi gặp lỗi.

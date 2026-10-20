@@ -76,7 +76,8 @@ Mở `http://127.0.0.1:5173/` và đăng nhập bằng tài khoản đã đượ
 - `docker compose down` dừng container nhưng **giữ** MySQL volume. Không dùng `docker compose down -v` nếu cần giữ dữ liệu.
 - Nếu một service không healthy, chạy `docker compose ps` và `docker compose logs --tail=100 <ten-service>` (ví dụ `identity`, `registry`, `mysql`). Che dữ liệu cá nhân trước khi gửi log cho nhóm.
 - Nếu cổng `3307`, `8001`–`8007` hoặc `5173` đã bị chương trình khác dùng, đóng chương trình đó hoặc thống nhất cách đổi cổng; không sửa mỗi máy một kiểu mà không báo nhóm.
-- Các màn hình còn gọi backend cũ ở cổng `8000` có thể báo lỗi. `Backend/` cũ không nằm trong Docker Compose; việc import 7 database không làm các màn hình đó hoạt động đầy đủ.
+- Frontend hiện gọi 7 microservice ở cổng `8001`–`8007`; `Backend/` cũ không nằm trong Docker Compose. Các luồng chưa chuyển đầy đủ (hoàn tiền, BHYT, báo cáo chi tiết) vẫn có giới hạn như bảng trong [README](../README.md#trạng-thái-chức-năng).
 - Git chỉ đồng bộ **code**. Dữ liệu sau khi import nằm trong Docker volume riêng của mỗi máy; `git pull` không cập nhật MySQL. Muốn chia sẻ dữ liệu mới, cần một bản dump mới gửi riêng.
+- Bản dump ngày 14/10 còn 248 ca trực tháng 6–7/2026. Nếu cần dời riêng các ca demo sang 01/10–01/11/2026 để thử đặt lịch, xem lệnh một lần trong [README](../README.md#dữ-liệu-khi-clone); thao tác này không dời lịch hẹn/bệnh án lịch sử.
 
 Chi tiết kỹ thuật của bản dump và checksum: [data/mysql/README.md](../data/mysql/README.md).

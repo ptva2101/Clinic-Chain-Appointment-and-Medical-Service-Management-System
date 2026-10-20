@@ -15,6 +15,14 @@ async function request(path, options = {}) {
 export const listDoctorSchedules = (query = '') =>
   request(`/doctor-schedules${query ? `?${query}` : ''}`)
 
+export const getSchedulingAvailability = ({ configCode, doctorCode, date, shift }) =>
+  request(`/availability?${new URLSearchParams({
+    config_code: configCode,
+    doctor_code: doctorCode,
+    date,
+    shift: String(shift),
+  })}`)
+
 export const createDoctorSchedules = (accessToken, schedules) =>
   request('/doctor-schedules/bulk', {
     method: 'POST',
@@ -22,6 +30,32 @@ export const createDoctorSchedules = (accessToken, schedules) =>
     body: JSON.stringify({ schedules }),
   })
 
-// These operations need Appointment and Billing orchestration before they can be safe.
-export const cancelDoctorSchedules = () => { throw new Error('Chưa hỗ trợ hủy ca trực có thể ảnh hưởng lịch hẹn.') }
-export const transferDoctorSchedules = () => { throw new Error('Chưa hỗ trợ chuyển ca trực có thể ảnh hưởng lịch hẹn.') }
+const scheduleId = (body) => {
+  const value = body.id ?? Number(String(body.MaLichTruc || '').replace(/^LT_/, ''))
+  if (!Number.isInteger(Number(value)) || Number(value) <= 0) throw new Error('Mã lịch trực không hợp lệ.')
+  return Number(value)
+}
+
+const legacyScheduleResponse = (schedule) => ({
+  ok: true,
+  status: 200,
+  json: async () => ({ success: true, message: '', data: { schedule, affectedPatients: [] } }),
+})
+
+export const cancelDoctorSchedules = async (options, accessToken) => {
+  const body = JSON.parse(options.body)
+  const schedule = await request(`/doctor-schedules/${scheduleId(body)}/cancel`, {
+    method: 'POST', headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  return legacyScheduleResponse(schedule)
+}
+
+export const transferDoctorSchedules = async (options, accessToken) => {
+  const body = JSON.parse(options.body)
+  const schedule = await request(`/doctor-schedules/${scheduleId(body)}/transfer`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_doctor_code: body.newMaBacSi }),
+  })
+  return legacyScheduleResponse(schedule)
+}

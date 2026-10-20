@@ -13,6 +13,21 @@ class RegistryRepository:
     def __init__(self, database: MySQLDatabase) -> None:
         self.database = database
 
+    async def patients_by_ids(self, profile_ids: list[str]) -> list[dict]:
+        if not profile_ids:
+            return []
+        placeholders = ", ".join(["%s"] * len(profile_ids))
+        pool = await self.database.pool()
+        async with pool.acquire() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    "SELECT id, identity_account_id, cccd, full_name, date_of_birth, phone "
+                    f"FROM patients WHERE id IN ({placeholders})", tuple(profile_ids),
+                )
+                rows = await cursor.fetchall()
+                await connection.rollback()
+                return rows
+
     async def ensure_patient(self, account_id: str, cccd: str) -> dict:
         pool = await self.database.pool()
         async with pool.acquire() as connection:

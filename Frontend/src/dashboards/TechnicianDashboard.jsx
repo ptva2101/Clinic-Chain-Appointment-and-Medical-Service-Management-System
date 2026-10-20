@@ -5,7 +5,7 @@ import { acceptTest, getTests, updateResult } from '../api/laboratory.js'
 import TablePagination from './TablePagination.jsx'
 import { getPageRows } from './tablePagination.js'
 
-export default function TechnicianDashboard({ user, onLogout, onChangePassword, showNotification, catalogData = EMPTY_CATALOG_DATA }) {
+export default function TechnicianDashboard({ user, identityAccessToken, onLogout, onChangePassword, showNotification, catalogData = EMPTY_CATALOG_DATA }) {
   const [activeTab, setActiveTab] = useState('pending')
   const [pendingPage, setPendingPage] = useState(0)
   const [completedPage, setCompletedPage] = useState(0)
@@ -14,7 +14,7 @@ export default function TechnicianDashboard({ user, onLogout, onChangePassword, 
   const [resultText, setResultText] = useState('')
   const [feedback, setFeedback] = useState('')
   const [labApiRows, setLabApiRows] = useState([])
-  const [hasLoadedLabRows, setHasLoadedLabRows] = useState(false)
+  const [hasLoadedLabRows, setHasLoadedLabRows] = useState(true)
   const [labRowsLoading, setLabRowsLoading] = useState(false)
   const [labRowsError, setLabRowsError] = useState('')
   const [labActionLoading, setLabActionLoading] = useState('')
@@ -28,216 +28,12 @@ export default function TechnicianDashboard({ user, onLogout, onChangePassword, 
     setFeedback(message)
     showNotification?.(message, type)
   }
-  const [branches] = useState([
-    {
-      MaChiNhanh: 'CN_CG',
-      TenChiNhanh: 'Medicare - Cơ sở Cầu Giấy',
-      DiaChi: 'Số 1 Dịch Vọng Hậu, Cầu Giấy, Hà Nội',
-    },
-    {
-      MaChiNhanh: 'CN_HBT',
-      TenChiNhanh: 'Medicare - Cơ sở Hai Bà Trưng',
-      DiaChi: 'Số 99 Đại Cồ Việt, Hai Bà Trưng, Hà Nội',
-    },
-  ])
-  const [patients] = useState([
-    {
-      MaBenhAn: 'BN001',
-      HoTen: 'Trần Quang Hải',
-      CCCD: '001095012345',
-      SDT: '0901234567',
-      KyTuDauBHYT: 'DN',
-    },
-    {
-      MaBenhAn: 'BN002',
-      HoTen: 'Nguyễn Thị Mai',
-      CCCD: '001200054321',
-      SDT: '0907654321',
-      KyTuDauBHYT: '',
-    },
-    {
-      MaBenhAn: 'BN003',
-      HoTen: 'Phạm Lê Minh',
-      CCCD: '001221098765',
-      SDT: '0911999888',
-      KyTuDauBHYT: 'TE',
-    },
-    {
-      MaBenhAn: 'BN004',
-      HoTen: 'Lê Hoàng Nam',
-      CCCD: '001186000004',
-      SDT: '0904000004',
-      KyTuDauBHYT: 'DN',
-    },
-    {
-      MaBenhAn: 'BN005',
-      HoTen: 'Đỗ Minh Châu',
-      CCCD: '001187000005',
-      SDT: '0905000005',
-      KyTuDauBHYT: '',
-    },
-    {
-      MaBenhAn: 'BN006',
-      HoTen: 'Vũ Gia Hân',
-      CCCD: '001188000006',
-      SDT: '0906000006',
-      KyTuDauBHYT: 'HT',
-    },
-  ])
-  const [services] = useState([
-    { MaDichVu: 'DV_KHAM_NOI', TenDichVu: 'Khám Nội Tổng Quát', ChuyenKhoa: 'Nội tổng quát', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 150000 },
-    { MaDichVu: 'DV_KHAM_TMH', TenDichVu: 'Khám Tai Mũi Họng Thông Thường', ChuyenKhoa: 'Tai mũi họng', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 180000 },
-    { MaDichVu: 'DV_KHAM_RANG', TenDichVu: 'Khám Răng Hàm Mặt Định Kỳ', ChuyenKhoa: 'Răng hàm mặt', LoaiDichVu: 'Khám lâm sàng', GiaGoc: 200000 },
-    { MaDichVu: 'XN_MAU', TenDichVu: 'Xét Nghiệm Công Thức Máu 24 Chỉ Số', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 250000 },
-    { MaDichVu: 'SA_O_BUNG', TenDichVu: 'Siêu Âm Ổ Bụng Tổng Quát', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 300000 },
-    { MaDichVu: 'XN_NUOC_TIEU', TenDichVu: 'Xét Nghiệm Nước Tiểu Toàn Bộ (10 Thông Số)', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 120000 },
-    { MaDichVu: 'XN_SINH_HOA', TenDichVu: 'Xét Nghiệm Sinh Hóa Máu (Gan, Thận, Mỡ Máu)', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 350000 },
-    { MaDichVu: 'XN_DUONG_HUYET', TenDichVu: 'Xét Nghiệm Đường Huyết Nhanh', ChuyenKhoa: 'Xét nghiệm', LoaiDichVu: 'Xét nghiệm', GiaGoc: 80000 },
-  ])
-  const [bookings] = useState([
-    {
-      MaLichHen: 'LH_LAB_001',
-      MaBenhAn: 'BN001',
-      MaDichVu: 'DV_KHAM_NOI',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: '2026-05-31',
-      CaKham: 1,
-      MaBacSi: 'BS001',
-      TrangThai: 'Đang khám',
-    },
-    {
-      MaLichHen: 'LH_LAB_002',
-      MaBenhAn: 'BN003',
-      MaDichVu: 'DV_KHAM_RANG',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: '2026-05-31',
-      CaKham: 2,
-      MaBacSi: 'BS002',
-      TrangThai: 'Đang khám',
-    },
-    {
-      MaLichHen: 'LH_LAB_003',
-      MaBenhAn: 'BN004',
-      MaDichVu: 'DV_KHAM_TMH',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: '2026-05-31',
-      CaKham: 3,
-      MaBacSi: 'BS003',
-      TrangThai: 'Đang khám',
-    },
-    {
-      MaLichHen: 'LH_LAB_004',
-      MaBenhAn: 'BN002',
-      MaDichVu: 'DV_KHAM_TMH',
-      MaChiNhanh: 'CN_HBT',
-      NgayKham: '2026-05-31',
-      CaKham: 1,
-      MaBacSi: 'BS015',
-      TrangThai: 'Đang khám',
-    },
-    {
-      MaLichHen: 'LH_LAB_005',
-      MaBenhAn: 'BN005',
-      MaDichVu: 'DV_KHAM_NOI',
-      MaChiNhanh: 'CN_HBT',
-      NgayKham: '2026-05-31',
-      CaKham: 2,
-      MaBacSi: 'BS016',
-      TrangThai: 'Đang khám',
-    },
-    {
-      MaLichHen: 'LH_LAB_006',
-      MaBenhAn: 'BN006',
-      MaDichVu: 'DV_KHAM_NOI',
-      MaChiNhanh: 'CN_CG',
-      NgayKham: '2026-05-31',
-      CaKham: 4,
-      MaBacSi: 'BS004',
-      TrangThai: 'Đang khám',
-    },
-  ])
-  const [visitRecords] = useState([
-    { MaLuotKham: 'LK_001', MaLichHen: 'LH_LAB_001', ChanDoanSoBo: 'Theo dõi thiếu máu, đau thượng vị' },
-    { MaLuotKham: 'LK_002', MaLichHen: 'LH_LAB_002', ChanDoanSoBo: 'Đau răng, cần kiểm tra chỉ số viêm' },
-    { MaLuotKham: 'LK_003', MaLichHen: 'LH_LAB_003', ChanDoanSoBo: 'Viêm mũi xoang, cần xét nghiệm máu' },
-    { MaLuotKham: 'LK_004', MaLichHen: 'LH_LAB_004', ChanDoanSoBo: 'Theo dõi viêm đường hô hấp' },
-    { MaLuotKham: 'LK_005', MaLichHen: 'LH_LAB_005', ChanDoanSoBo: 'Tầm soát chuyển hóa' },
-    { MaLuotKham: 'LK_006', MaLichHen: 'LH_LAB_006', ChanDoanSoBo: 'Đánh giá chức năng gan thận' },
-  ])
-  const [labDetails, setLabDetails] = useState([
-    {
-      MaChiTietXN: 'CTXN_001',
-      MaLuotKham: 'LK_001',
-      MaDichVu: 'XN_MAU',
-      PaymentToken: null,
-      KetQuaXetNghiem: '',
-      MaXNV: '',
-      TrangThaiXetNghiem: 'Chưa thực hiện',
-    },
-    {
-      MaChiTietXN: 'CTXN_002',
-      MaLuotKham: 'LK_001',
-      MaDichVu: 'SA_O_BUNG',
-      PaymentToken: 'PAY_LAB_100002',
-      KetQuaXetNghiem: '',
-      MaXNV: '',
-      TrangThaiXetNghiem: 'Chưa thực hiện',
-    },
-    {
-      MaChiTietXN: 'CTXN_003',
-      MaLuotKham: 'LK_002',
-      MaDichVu: 'XN_MAU',
-      PaymentToken: null,
-      KetQuaXetNghiem: '',
-      MaXNV: '',
-      TrangThaiXetNghiem: 'Chưa thực hiện',
-    },
-    {
-      MaChiTietXN: 'CTXN_004',
-      MaLuotKham: 'LK_003',
-      MaDichVu: 'XN_SINH_HOA',
-      PaymentToken: null,
-      KetQuaXetNghiem: '',
-      MaXNV: '',
-      TrangThaiXetNghiem: 'Chưa thực hiện',
-    },
-    {
-      MaChiTietXN: 'CTXN_005',
-      MaLuotKham: 'LK_004',
-      MaDichVu: 'XN_NUOC_TIEU',
-      PaymentToken: null,
-      KetQuaXetNghiem: '',
-      MaXNV: '',
-      TrangThaiXetNghiem: 'Chưa thực hiện',
-    },
-    {
-      MaChiTietXN: 'CTXN_006',
-      MaLuotKham: 'LK_005',
-      MaDichVu: 'XN_DUONG_HUYET',
-      PaymentToken: 'PAY_LAB_100006',
-      KetQuaXetNghiem: 'Glucose máu mao mạch 5.8 mmol/L.',
-      MaXNV: 'XNV002',
-      TrangThaiXetNghiem: 'Đã có kết quả',
-    },
-    {
-      MaChiTietXN: 'CTXN_007',
-      MaLuotKham: 'LK_006',
-      MaDichVu: 'XN_SINH_HOA',
-      PaymentToken: null,
-      KetQuaXetNghiem: '',
-      MaXNV: '',
-      TrangThaiXetNghiem: 'Chưa thực hiện',
-    },
-    {
-      MaChiTietXN: 'CTXN_008',
-      MaLuotKham: 'LK_003',
-      MaDichVu: 'XN_DUONG_HUYET',
-      PaymentToken: 'PAY_LAB_100008',
-      KetQuaXetNghiem: 'Glucose máu nhanh 5.4 mmol/L, trong giới hạn bình thường.',
-      MaXNV: 'XNV001',
-      TrangThaiXetNghiem: 'Đã có kết quả',
-    },
-  ])
+  const [branches] = useState([])
+  const [patients] = useState([])
+  const [services] = useState([])
+  const [bookings] = useState([])
+  const [visitRecords] = useState([])
+  const [labDetails, setLabDetails] = useState([])
   const bhytCategories = [
     { KyTuDauBHYT: 'TE', DoiTuongChinhSach: 'Trẻ em dưới 6 tuổi', TyLeHuong: 1 },
     { KyTuDauBHYT: 'HT', DoiTuongChinhSach: 'Cán bộ Hưu trí', TyLeHuong: 0.95 },
@@ -313,7 +109,7 @@ export default function TechnicianDashboard({ user, onLogout, onChangePassword, 
     setLabRowsError('')
 
     try {
-      const response = await getTests(maChiNhanh)
+      const response = await getTests(maChiNhanh, identityAccessToken)
       const result = await response.json()
 
       if (!response.ok || !result?.success) {
@@ -415,7 +211,7 @@ export default function TechnicianDashboard({ user, onLogout, onChangePassword, 
         const response = await acceptTest({
           method: 'POST',
           body: formData,
-        })
+        }, identityAccessToken)
         const result = await response.json()
 
         if (!response.ok || !result?.success) {
@@ -493,7 +289,7 @@ export default function TechnicianDashboard({ user, onLogout, onChangePassword, 
         const response = await updateResult({
           method: 'POST',
           body: formData,
-        })
+        }, identityAccessToken)
         const result = await response.json()
 
         if (!response.ok || !result?.success) {

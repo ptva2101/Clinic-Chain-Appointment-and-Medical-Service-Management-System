@@ -5,15 +5,16 @@ import medicalTeamImage from './assets/medical-team-cutout.png'
 import { EMPTY_CATALOG_DATA } from './shared/catalog.js'
 import { getFutureDateKey, getTodayDateKey } from './shared/dates.js'
 import { InputField, GlobalToast } from './shared/Widgets.jsx'
-import PatientProfileForm from './shared/PatientProfileForm.jsx'
 import AdminDashboard from './dashboards/AdminDashboard.jsx'
 import DoctorDashboard from './dashboards/DoctorDashboard.jsx'
 import ReceptionistDashboard from './dashboards/ReceptionistDashboard.jsx'
 import TechnicianDashboard from './dashboards/TechnicianDashboard.jsx'
 import PatientDashboard from './dashboards/PatientDashboard.jsx'
 import { catalogEndpoints, fetchCatalog } from './api/registry.js'
+import { fetchClinicalCatalog } from './api/clinical.js'
 import { changeAccountPassword, getCurrentAccount, loginAccount, logoutAccount, refreshAccount, registerAccount } from './api/identity.js'
 import { getStaffProfile } from './api/staffProfile.js'
+import { getPatientProfile } from './api/patientProfile.js'
 import { listDoctorSchedules } from './api/scheduling.js'
 import { markPatientNotificationsRead as persistPatientNotificationsRead } from './api/appointment.js'
 import './App.css'
@@ -34,6 +35,11 @@ const toDashboardUser = (account, profile = null) => {
     ...(account.role === 'doctor' ? { MaBacSi: profileId } : {}),
     ...(account.role === 'letan' ? { MaLeTan: profileId } : {}),
     ...(account.role === 'xnv' ? { MaXNV: profileId } : {}),
+    ...(account.role === 'patient' ? {
+      MaBenhAn: profile?.id || profileId,
+      CCCD: profile?.cccd || account.username,
+      NgaySinh: profile?.date_of_birth || '',
+    } : {}),
   }
 }
 
@@ -137,7 +143,7 @@ export default function App() {
     const endpoints = catalogEndpoints()
 
     try {
-      const [entries, doctorSchedules] = await Promise.all([
+      const [entries, doctorSchedules, clinicalEntries] = await Promise.all([
         Promise.all(
           Object.entries(endpoints).map(async ([key, endpoint]) => {
             const response = await fetchCatalog(endpoint)
@@ -154,9 +160,15 @@ export default function App() {
           from_date: getTodayDateKey(),
           to_date: getFutureDateKey(30),
         }).toString()),
+        Promise.all(['diseases', 'medicines'].map(async (key) => {
+          const response = await fetchClinicalCatalog(key)
+          const result = await response.json()
+          if (!response.ok || !Array.isArray(result)) throw new Error(`Không thể tải ${key} từ Clinical`)
+          return [key, result]
+        })),
       ])
 
-      const nextCatalog = entries.reduce(
+      const nextCatalog = [...entries, ...clinicalEntries].reduce(
         (accumulator, [key, result]) => ({
           ...accumulator,
           [key]: result,
@@ -234,17 +246,17 @@ export default function App() {
         await logoutAccount(issued.refresh_token)
         throw new Error('Vai trò tài khoản không khớp.')
       }
-      const staffProfile = STAFF_ROLES.has(role) ? await getStaffProfile(issued.access_token) : null
+      const profile = role === 'patient'
+        ? await getPatientProfile(issued.access_token)
+        : STAFF_ROLES.has(role) ? await getStaffProfile(issued.access_token) : null
       setIdentityTokens(issued)
       setIdentityAccount(account)
       setPassword('')
-      if (role !== 'patient') {
-        setCurrentUser(toDashboardUser(account, staffProfile))
-        setMode(role)
-        loadCatalogData().catch((error) => {
-          showNotification(error instanceof Error ? error.message : 'Không thể tải danh mục Registry.', 'error')
-        })
-      }
+      setCurrentUser(toDashboardUser(account, profile))
+      setMode(role)
+      loadCatalogData().catch((error) => {
+        showNotification(error instanceof Error ? error.message : 'Không thể tải danh mục Registry.', 'error')
+      })
       showNotification('Đăng nhập thành công.')
     } catch (error) {
       if (issued?.refresh_token) await logoutAccount(issued.refresh_token).catch(() => {})
@@ -341,6 +353,7 @@ export default function App() {
 	    return renderWithToast(
 	      <DoctorDashboard
 	        user={currentUser}
+	        identityAccessToken={identityTokens?.access_token}
 	        onLogout={handleIdentityLogout}
 	        onChangePassword={handleChangeIdentityPassword}
 	        showNotification={showNotification}
@@ -353,6 +366,7 @@ export default function App() {
 	    return renderWithToast(
 	      <ReceptionistDashboard
 	        user={currentUser}
+	        identityAccessToken={identityTokens?.access_token}
 	        onLogout={handleIdentityLogout}
 	        showNotification={showNotification}
 	        catalogData={catalogData}
@@ -363,6 +377,7 @@ export default function App() {
 	    return renderWithToast(
 	      <TechnicianDashboard
 	        user={currentUser}
+	        identityAccessToken={identityTokens?.access_token}
 	        onLogout={handleIdentityLogout}
 	        onChangePassword={handleChangeIdentityPassword}
 	        showNotification={showNotification}
@@ -413,17 +428,6 @@ export default function App() {
                 Đăng ký
               </button>
             </div>}
-
-            {identityAccount && (
-              <div className="auth-identity-summary">
-                <h1>Đã đăng nhập</h1>
-                <p>Tài khoản bệnh nhân: <strong>{identityAccount.username}</strong></p>
-                <p>Mã hồ sơ Registry: <strong>{identityAccount.subject_id}</strong></p>
-                <p>Hồ sơ đã liên kết. Tính năng đặt lịch trên dashboard đang được chuyển sang các service mới.</p>
-                <PatientProfileForm accessToken={identityTokens?.access_token} showNotification={showNotification} />
-                <button className="submit-button" type="button" onClick={handleIdentityLogout} disabled={authBusy}>Đăng xuất</button>
-              </div>
-            )}
 
             {!identityAccount && mode === 'login' && (
               <form className="auth-form" onSubmit={handleLogin}>

@@ -54,6 +54,11 @@ class ScheduleResponse(BaseModel):
     TrangThai: str
 
 
+class TransferScheduleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    new_doctor_code: str = Field(min_length=1, max_length=128)
+
+
 def to_response(row: dict) -> ScheduleResponse:
     return ScheduleResponse(
         id=row["id"], MaLichTruc=f"LT_{row['id']:06d}",
@@ -147,3 +152,30 @@ async def create_doctor_schedules(
     except ScheduleConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return [to_response(row) for row in rows]
+
+
+@router.post("/doctor-schedules/{schedule_id}/cancel", response_model=ScheduleResponse)
+async def cancel_doctor_schedule(schedule_id: int, repository: Repository, token: AdminToken) -> ScheduleResponse:
+    try:
+        return to_response(await repository.change_schedule(schedule_id))
+    except ScheduleConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/doctor-schedules/{schedule_id}/transfer", response_model=ScheduleResponse)
+async def transfer_doctor_schedule(
+    schedule_id: int, body: TransferScheduleRequest, repository: Repository,
+    token: AdminToken, registry: Registry,
+) -> ScheduleResponse:
+    current = await repository.get_schedule(schedule_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Doctor schedule not found")
+    try:
+        await registry.verify_references(token, {body.new_doctor_code}, {current["branch_code"]})
+        return to_response(await repository.change_schedule(schedule_id, body.new_doctor_code))
+    except InvalidScheduleReference as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RegistryUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ScheduleConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

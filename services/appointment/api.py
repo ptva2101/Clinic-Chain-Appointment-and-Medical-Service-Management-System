@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from appointment.repository import AppointmentConflict, AppointmentNotFound, AppointmentRepository
 from appointment.scheduling_client import SchedulingClient, SchedulingRejected, SchedulingUnavailable
+from appointment.workflow_clients import WorkflowClients, WorkflowUnavailable
 from common.identity_client import IdentityClient, IdentityUnavailable, InvalidIdentityToken
 
 
@@ -77,8 +78,13 @@ def get_scheduling_client() -> SchedulingClient:
     return SchedulingClient()
 
 
+def get_billing_client() -> WorkflowClients:
+    return WorkflowClients()
+
+
 Repository = Annotated[AppointmentRepository, Depends(get_repository)]
 Scheduling = Annotated[SchedulingClient, Depends(get_scheduling_client)]
+Billing = Annotated[WorkflowClients, Depends(get_billing_client)]
 
 
 async def authenticated_account(
@@ -212,7 +218,8 @@ async def appointment_detail(
 
 @router.post("/{appointment_id}/cancel", response_model=AppointmentResponse)
 async def cancel(
-    appointment_id: str, repository: Repository, scheduling: Scheduling, account: Account,
+    appointment_id: str, repository: Repository, scheduling: Scheduling, billing: Billing,
+    account: Account,
 ) -> AppointmentResponse:
     require_role(account, "patient")
     row = await repository.get(appointment_id)
@@ -222,6 +229,12 @@ async def cancel(
         return response(row)
     if row["status"] not in ("confirmed", "cancel_pending"):
         raise HTTPException(status_code=409, detail="Appointment is not cancellable")
+    try:
+        payment_status = await billing.payment_status(appointment_id)
+    except WorkflowUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if payment_status == "paid":
+        raise HTTPException(status_code=409, detail="Paid appointment requires refund orchestration before cancellation")
     try:
         row = await repository.set_status(row["id"], ("confirmed", "cancel_pending"), "cancel_pending")
         released = await scheduling.release(row["hold_id"])

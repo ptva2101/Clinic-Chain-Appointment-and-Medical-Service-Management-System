@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from appointment.api import get_identity_client, get_repository, get_scheduling_client
+from appointment.api import get_billing_client, get_identity_client, get_repository, get_scheduling_client
 from appointment.main import app
 from appointment.repository import AppointmentConflict, AppointmentNotFound
 from appointment.scheduling_client import SchedulingRejected, SchedulingUnavailable
@@ -51,6 +51,13 @@ class MemoryScheduling:
         hold = next(row for row in self.holds.values() if row["id"] == hold_id)
         hold["state"] = "released"
         return hold
+
+
+class MemoryBilling:
+    status = None
+
+    async def payment_status(self, _appointment_id):
+        return self.status
 
 
 class MemoryAppointments:
@@ -121,8 +128,10 @@ class MemoryAppointments:
 def client():
     repository = MemoryAppointments()
     scheduling = MemoryScheduling()
+    scheduling.billing = MemoryBilling()
     app.dependency_overrides[get_repository] = lambda: repository
     app.dependency_overrides[get_scheduling_client] = lambda: scheduling
+    app.dependency_overrides[get_billing_client] = lambda: scheduling.billing
     app.dependency_overrides[get_identity_client] = lambda: MemoryIdentity()
     try:
         with TestClient(app) as http:
@@ -157,6 +166,18 @@ def test_booking_lists_and_cancel(client):
     assert http.post(f"{base}/{appointment_id}/cancel", headers=patient).status_code == 200
     assert http.post(base, json=body, headers=patient).status_code == 409
     assert base in http.get("/openapi.json").json()["paths"]
+
+
+def test_paid_appointment_cannot_be_cancelled_without_refund(client):
+    http, _repository, scheduling = client
+    patient = {"Authorization": "Bearer patient-a"}
+    appointment_id = http.post("/api/v1/appointments", json=booking_body(),
+                               headers=patient).json()["id"]
+    scheduling.billing.status = "paid"
+    result = http.post(f"/api/v1/appointments/{appointment_id}/cancel", headers=patient)
+    assert result.status_code == 409
+    assert http.get(f"/api/v1/appointments/{appointment_id}",
+                    headers=patient).json()["status"] == "confirmed"
 
 
 def test_notifications_are_private_and_read_state_persists(client):

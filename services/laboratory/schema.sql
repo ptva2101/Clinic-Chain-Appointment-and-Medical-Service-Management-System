@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS lab_orders (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    encounter_id CHAR(36) NOT NULL,
+    appointment_id CHAR(36) NOT NULL,
+    patient_id VARCHAR(128) NOT NULL,
+    branch_code VARCHAR(32) NOT NULL,
+    doctor_code VARCHAR(128) NOT NULL,
+    service_code VARCHAR(40) NOT NULL,
+    list_price BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    status VARCHAR(24) NOT NULL DEFAULT 'pending',
+    payment_method VARCHAR(24) NULL,
+    payment_token VARCHAR(64) NULL,
+    technician_code VARCHAR(128) NULL,
+    result_text TEXT NULL,
+    notes TEXT NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uq_lab_encounter_service (encounter_id, service_code),
+    UNIQUE KEY uq_lab_payment_token (payment_token),
+    KEY ix_lab_branch_status (branch_code, status, created_at),
+    KEY ix_lab_patient (patient_id, created_at),
+    CONSTRAINT ck_lab_status CHECK (status IN ('pending', 'accepted', 'resulted'))
+);

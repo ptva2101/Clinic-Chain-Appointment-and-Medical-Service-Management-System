@@ -169,7 +169,7 @@ class SlotRepository:
                     await cursor.execute(
                         "SELECT 1 FROM doctor_schedules "
                         "WHERE doctor_code = %s AND branch_code = %s AND duty_date = %s "
-                        "AND shift = %s AND status = 'active' LIMIT 1",
+                        "AND shift = %s AND status = 'active' LIMIT 1 FOR UPDATE",
                         (body.doctor_code, config["MaChiNhanh"], body.date, body.shift),
                     )
                     if await cursor.fetchone() is None:

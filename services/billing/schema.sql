@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS invoices (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    appointment_id CHAR(36) NOT NULL,
+    patient_account_id CHAR(36) NOT NULL,
+    patient_id VARCHAR(128) NOT NULL,
+    service_code VARCHAR(40) NOT NULL,
+    list_price BIGINT UNSIGNED NOT NULL,
+    insurance_discount BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    amount_due BIGINT UNSIGNED NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+    payment_method VARCHAR(24) NULL,
+    payment_token VARCHAR(64) NULL,
+    paid_at DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    UNIQUE KEY uq_invoice_appointment (appointment_id),
+    UNIQUE KEY uq_invoice_payment_token (payment_token),
+    KEY ix_invoice_patient (patient_account_id, created_at),
+    KEY ix_invoice_status_date (status, created_at),
+    CONSTRAINT ck_invoice_status CHECK (status IN ('pending', 'paid', 'refunded')),
+    CONSTRAINT ck_invoice_amount CHECK (list_price >= insurance_discount AND amount_due = list_price - insurance_discount)
+);
