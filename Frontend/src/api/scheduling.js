@@ -15,6 +15,11 @@ async function request(path, options = {}) {
 export const listDoctorSchedules = (query = '') =>
   request(`/doctor-schedules${query ? `?${query}` : ''}`)
 
+export const getDoctorScheduleImpact = (accessToken, id) =>
+  request(`/doctor-schedules/${id}/impact`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
 export const getSchedulingAvailability = ({ configCode, doctorCode, date, shift }) =>
   request(`/availability?${new URLSearchParams({
     config_code: configCode,

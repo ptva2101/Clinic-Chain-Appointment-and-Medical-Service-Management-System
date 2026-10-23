@@ -70,3 +70,15 @@ class SchedulingClient:
 
     async def release(self, hold_id: str) -> dict:
         return await self._internal(hold_id, "release")
+
+    async def get_hold(self, hold_id: str) -> dict:
+        token = os.getenv("SCHEDULING_INTERNAL_TOKEN")
+        if not token:
+            raise SchedulingUnavailable("Scheduling internal token is not configured")
+        url = f"{self.base}/api/v1/scheduling/internal/holds/{quote(hold_id, safe='')}"
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                response = await client.get(url, headers={"X-Service-Token": token})
+        except httpx.RequestError as exc:
+            raise SchedulingUnavailable("Scheduling service is unavailable") from exc
+        return self._result(response)

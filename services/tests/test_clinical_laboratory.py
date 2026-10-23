@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from clinical.api import get_clients as clinical_clients, get_identity_client as clinical_identity
 from clinical.api import get_repository as clinical_repository
+from clinical.api import session_response
 from clinical.clients import ClinicalRejected, ClinicalUnavailable
 from clinical.repository import EncounterConflict
 from clinical.main import app as clinical_app
@@ -14,6 +15,21 @@ from laboratory.api import account as lab_account, get_identity_client as lab_id
 from laboratory.api import get_repository as lab_repository
 from laboratory.api import technician_branch
 from laboratory.main import app as lab_app
+
+
+def test_legacy_undated_treatment_session_is_serialized_without_fabricated_date():
+    now = datetime.now()
+    row = {
+        "id": str(uuid4()), "plan_id": str(uuid4()), "session_number": 2,
+        "config_code": None, "doctor_code": "LEGACY_BS001", "duty_date": None,
+        "shift": None, "appointment_id": None, "invoice_id": None,
+        "status": "historical_unbooked", "source": "legacy_mysql",
+        "created_at": now, "updated_at": now,
+    }
+    response = session_response(row)
+    assert response.date is None and response.shift is None
+    assert response.status == "historical_unbooked"
+    assert response.source == "legacy_mysql"
 
 
 class Identity:

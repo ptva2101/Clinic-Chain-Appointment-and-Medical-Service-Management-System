@@ -23,6 +23,7 @@ class MemoryScheduling:
         self.holds = {}
         self.unavailable_on_confirm = False
         self.reject_on_confirm = False
+        self.unavailable_on_release = False
 
     async def create_hold(self, token, body):
         key = (token, body["idempotency_key"])
@@ -48,6 +49,8 @@ class MemoryScheduling:
         return hold
 
     async def release(self, hold_id):
+        if self.unavailable_on_release:
+            raise SchedulingUnavailable("Scheduling service is unavailable")
         hold = next(row for row in self.holds.values() if row["id"] == hold_id)
         hold["state"] = "released"
         return hold
@@ -64,6 +67,7 @@ class MemoryAppointments:
     def __init__(self):
         self.rows = {}
         self.notifications = []
+        self.checked_in_ids = set()
 
     async def get(self, appointment_id):
         return self.rows.get(appointment_id)
@@ -93,6 +97,8 @@ class MemoryAppointments:
             raise AppointmentNotFound("Appointment not found")
         if row["status"] != next_status and row["status"] not in expected:
             raise AppointmentConflict("Invalid status change")
+        if next_status == "cancel_pending" and appointment_id in self.checked_in_ids:
+            raise AppointmentConflict("Checked-in appointment cannot be cancelled")
         changed = row["status"] != next_status
         row["status"] = next_status
         if changed and next_status in ("confirmed", "cancelled"):
@@ -178,6 +184,48 @@ def test_paid_appointment_cannot_be_cancelled_without_refund(client):
     assert result.status_code == 409
     assert http.get(f"/api/v1/appointments/{appointment_id}",
                     headers=patient).json()["status"] == "confirmed"
+
+
+def test_refunded_appointment_can_be_cancelled_and_releases_slot(client):
+    http, _repository, scheduling = client
+    patient = {"Authorization": "Bearer patient-a"}
+    appointment_id = http.post("/api/v1/appointments", json=booking_body(),
+                               headers=patient).json()["id"]
+    scheduling.billing.status = "refunded"
+    cancelled = http.post(f"/api/v1/appointments/{appointment_id}/cancel", headers=patient)
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert next(iter(scheduling.holds.values()))["state"] == "released"
+
+
+def test_cancel_retries_after_scheduling_outage(client):
+    http, repository, scheduling = client
+    patient = {"Authorization": "Bearer patient-a"}
+    appointment_id = http.post("/api/v1/appointments", json=booking_body(),
+                               headers=patient).json()["id"]
+    scheduling.unavailable_on_release = True
+    assert http.post(f"/api/v1/appointments/{appointment_id}/cancel", headers=patient).status_code == 503
+    assert repository.rows[appointment_id]["status"] == "cancel_pending"
+    assert next(iter(scheduling.holds.values()))["state"] == "confirmed"
+    scheduling.unavailable_on_release = False
+    retry = http.post(f"/api/v1/appointments/{appointment_id}/cancel", headers=patient)
+    assert retry.status_code == 200
+    assert retry.json()["status"] == "cancelled"
+    assert next(iter(scheduling.holds.values()))["state"] == "released"
+    assert len(repository.notifications) == 2
+
+
+def test_checked_in_appointment_cannot_be_cancelled_even_if_refunded(client):
+    http, repository, scheduling = client
+    patient = {"Authorization": "Bearer patient-a"}
+    appointment_id = http.post("/api/v1/appointments", json=booking_body(),
+                               headers=patient).json()["id"]
+    repository.checked_in_ids.add(appointment_id)
+    scheduling.billing.status = "refunded"
+    result = http.post(f"/api/v1/appointments/{appointment_id}/cancel", headers=patient)
+    assert result.status_code == 409
+    assert repository.rows[appointment_id]["status"] == "confirmed"
+    assert next(iter(scheduling.holds.values()))["state"] == "confirmed"
 
 
 def test_notifications_are_private_and_read_state_persists(client):

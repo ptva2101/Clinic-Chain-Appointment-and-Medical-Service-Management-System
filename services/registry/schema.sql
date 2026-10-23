@@ -1,14 +1,25 @@
 CREATE TABLE IF NOT EXISTS patients (
     id CHAR(36) PRIMARY KEY,
     identity_account_id CHAR(36) NOT NULL,
-    cccd CHAR(12) NOT NULL,
+    cccd CHAR(12) NULL,
     full_name VARCHAR(160) NULL,
     date_of_birth DATE NULL,
     phone VARCHAR(20) NULL,
+    insurance_card_number VARCHAR(20) NULL,
+    insurance_category_code VARCHAR(10) NULL,
+    insurance_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    source VARCHAR(32) NOT NULL DEFAULT 'identity',
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     UNIQUE KEY uq_patients_identity (identity_account_id),
     UNIQUE KEY uq_patients_cccd (cccd)
+);
+
+CREATE TABLE IF NOT EXISTS insurance_categories (
+    code VARCHAR(10) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    coverage_bps INT UNSIGNED NOT NULL,
+    CONSTRAINT ck_insurance_coverage CHECK (coverage_bps <= 10000)
 );
 
 CREATE TABLE IF NOT EXISTS staff_profiles (

@@ -3,6 +3,7 @@ import os
 from fastapi.middleware.cors import CORSMiddleware
 
 from common.app import create_app
+from common.history import history_router
 from identity.api import router
 
 app = create_app(
@@ -28,3 +29,4 @@ async def prevent_token_caching(request, call_next):
 
 
 app.include_router(router)
+app.include_router(history_router("identity"))

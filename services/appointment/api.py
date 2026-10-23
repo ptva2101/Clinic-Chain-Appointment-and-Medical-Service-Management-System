@@ -70,8 +70,8 @@ def get_repository(request: Request) -> AppointmentRepository:
     return AppointmentRepository(request.app.state.database)
 
 
-def get_identity_client() -> IdentityClient:
-    return IdentityClient()
+def get_identity_client(request: Request) -> IdentityClient:
+    return request.app.state.identity_client
 
 
 def get_scheduling_client() -> SchedulingClient:

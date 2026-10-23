@@ -85,13 +85,14 @@ class TreatmentSessionResponse(BaseModel):
     id: str
     plan_id: str
     session_number: int
-    config_code: str
+    config_code: str | None
     doctor_code: str
-    date: date
-    shift: int
+    date: date | None
+    shift: int | None
     appointment_id: str | None
     invoice_id: str | None
-    status: Literal["pending", "booked", "completed"]
+    status: Literal["pending", "booked", "completed", "historical_unbooked"]
+    source: str = "live"
     created_at: datetime
     updated_at: datetime
 
@@ -143,7 +144,7 @@ def session_response(row: dict) -> TreatmentSessionResponse:
         id=row["id"], plan_id=row["plan_id"], session_number=row["session_number"],
         config_code=row["config_code"], doctor_code=row["doctor_code"],
         date=row["duty_date"], shift=row["shift"], appointment_id=row["appointment_id"],
-        invoice_id=row["invoice_id"], status=row["status"],
+        invoice_id=row["invoice_id"], status=row["status"], source=row.get("source", "live"),
         created_at=row["created_at"], updated_at=row["updated_at"],
     )
 
@@ -156,8 +157,8 @@ def get_clients() -> ClinicalClients:
     return ClinicalClients()
 
 
-def get_identity_client() -> IdentityClient:
-    return IdentityClient()
+def get_identity_client(request: Request) -> IdentityClient:
+    return request.app.state.identity_client
 
 
 Repository = Annotated[ClinicalRepository, Depends(get_repository)]

@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { Activity, Building2, Calendar, ClipboardList, DollarSign, LogOut, Stethoscope, Users } from 'lucide-react'
 import medicalLogoImage from '../assets/medical-logo-cutout.png'
 import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
 import { getFutureDateKey, getTodayDateKey } from '../shared/dates.js'
-import { getMonthlyReport } from '../api/billing.js'
+import { getAdminInvoices, getGroupedReport, getMonthlyReport, simulateAdminRefund } from '../api/billing.js'
 import { listAccounts } from '../api/identity.js'
 import { listPatients } from '../api/patientProfile.js'
-import { createBranch, createService as createRegistryService, saveBranchService, updateBranchService, updateServicePrice as saveServicePrice } from '../api/registry.js'
+import { createBranch, createService as createRegistryService, saveBranchService, updateBranchService, updateServicePrice as saveServicePrice, verifyPatientInsurance } from '../api/registry.js'
 import { listStaffProfiles } from '../api/staffProfile.js'
-import { cancelDoctorSchedules, createDoctorSchedules, listDoctorSchedules, transferDoctorSchedules } from '../api/scheduling.js'
+import { cancelDoctorSchedules, createDoctorSchedules, getDoctorScheduleImpact, listDoctorSchedules, transferDoctorSchedules } from '../api/scheduling.js'
 import IdentityStaffAccounts from './IdentityStaffAccounts.jsx'
 import TablePagination from './TablePagination.jsx'
 import { getCurrentPage, getPageRows, TABLE_PAGE_SIZE } from './tablePagination.js'
@@ -45,6 +45,7 @@ export default function AdminDashboard({
   const [patientTotal, setPatientTotal] = useState(0)
   const [patientLoading, setPatientLoading] = useState(true)
   const [patientError, setPatientError] = useState('')
+  const [patientInsuranceBusyId, setPatientInsuranceBusyId] = useState('')
   const [patientReload, setPatientReload] = useState(0)
   const [serviceSearch, setServiceSearch] = useState('')
   const [servicePage, setServicePage] = useState(0)
@@ -86,8 +87,6 @@ export default function AdminDashboard({
   const [adminScheduleLoading, setAdminScheduleLoading] = useState(false)
   const [adminScheduleError, setAdminScheduleError] = useState('')
   const [appointments, setAppointments] = useState([])
-  const [labTestDetails] = useState([])
-  const [treatmentRevenueDetails] = useState([])
   const [bulkScheduleForm, setBulkScheduleForm] = useState({
     MaBacSi: '',
     MaChiNhanh: '',
@@ -114,23 +113,26 @@ export default function AdminDashboard({
     setFeedback(message)
     showNotification?.(message, type)
   }
-  const [reportMonth, setReportMonth] = useState('2026-06')
+  const [reportMonth, setReportMonth] = useState(() => getTodayDateKey().slice(0, 7))
   const [reportBranchPage, setReportBranchPage] = useState(0)
   const [reportDoctorPage, setReportDoctorPage] = useState(0)
   const [reportServicePage, setReportServicePage] = useState(0)
   const [adminReportData, setAdminReportData] = useState(null)
   const [adminReportLoading, setAdminReportLoading] = useState(false)
   const [adminReportError, setAdminReportError] = useState('')
+  const [billingPage, setBillingPage] = useState(0)
+  const [billingInvoices, setBillingInvoices] = useState([])
+  const [billingTotal, setBillingTotal] = useState(0)
+  const [billingLoading, setBillingLoading] = useState(false)
+  const [billingError, setBillingError] = useState('')
+  const [billingReload, setBillingReload] = useState(0)
+  const [refundBusyId, setRefundBusyId] = useState('')
 
   const serviceDepartments = ['Nội tổng quát', 'Răng hàm mặt', 'Tai mũi họng', 'Xét nghiệm']
   const serviceTypes = ['Khám lâm sàng', 'Xét nghiệm', 'Điều trị']
-  const bhytCategories = [
-    { KyTuDauBHYT: 'TE', DoiTuongChinhSach: 'Trẻ em dưới 6 tuổi', TyLeHuong: 1 },
-    { KyTuDauBHYT: 'HT', DoiTuongChinhSach: 'Cán bộ Hưu trí', TyLeHuong: 0.95 },
-    { KyTuDauBHYT: 'DN', DoiTuongChinhSach: 'Người lao động doanh nghiệp', TyLeHuong: 0.8 },
-  ]
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
     if (Array.isArray(catalogData?.branches)) {
       setBranches(catalogData.branches)
       setDistributionForm((current) => ({
@@ -171,6 +173,8 @@ export default function AdminDashboard({
       )
 
     }
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [catalogData])
 
   useEffect(() => {
@@ -255,13 +259,16 @@ export default function AdminDashboard({
   )
 
   useEffect(() => {
-    setBulkScheduleForm((current) => ({
-      ...current,
-      MaBacSi: doctors.some((doctor) => doctor.MaNhanSu === current.MaBacSi)
-        ? current.MaBacSi : doctors[0]?.MaNhanSu || '',
-      MaChiNhanh: branches.some((branch) => branch.MaChiNhanh === current.MaChiNhanh)
-        ? current.MaChiNhanh : branches[0]?.MaChiNhanh || '',
-    }))
+    const timer = window.setTimeout(() => {
+      setBulkScheduleForm((current) => ({
+        ...current,
+        MaBacSi: doctors.some((doctor) => doctor.MaNhanSu === current.MaBacSi)
+          ? current.MaBacSi : doctors[0]?.MaNhanSu || '',
+        MaChiNhanh: branches.some((branch) => branch.MaChiNhanh === current.MaChiNhanh)
+          ? current.MaChiNhanh : branches[0]?.MaChiNhanh || '',
+      }))
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [doctors, branches])
 
   const filteredServices = useMemo(() => {
@@ -279,6 +286,23 @@ export default function AdminDashboard({
   const getBranchName = (maChiNhanh) =>
     branches.find((branch) => branch.MaChiNhanh === maChiNhanh)?.TenChiNhanh || maChiNhanh
 
+  const handleVerifyPatientInsurance = async (patient) => {
+    if (!patient.insurance_card_number || !patient.insurance_category_code) return
+    const verified = !patient.insurance_verified
+    const action = verified ? 'xác minh' : 'hủy xác minh'
+    if (!window.confirm(`Bạn chắc chắn muốn ${action} BHYT của ${patient.full_name || patient.cccd || patient.id}?`)) return
+    setPatientInsuranceBusyId(patient.id)
+    try {
+      const updated = await verifyPatientInsurance(identityAccessToken, patient.id, verified)
+      setPatients((current) => current.map((item) => item.id === patient.id ? updated : item))
+      notify(`Đã ${action} BHYT của bệnh nhân.`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không thể cập nhật xác minh BHYT.', 'error')
+    } finally {
+      setPatientInsuranceBusyId('')
+    }
+  }
+
   const getService = (maDichVu) =>
     services.find((service) => service.MaDichVu === maDichVu) || {
       MaDichVu: maDichVu,
@@ -287,60 +311,6 @@ export default function AdminDashboard({
       GiaGoc: 0,
     }
 
-  const getPatient = (maBenhAn) => patients.find((patient) => patient.id === maBenhAn)
-
-  const getBhytRate = (maBenhAn) => {
-    const patient = getPatient(maBenhAn)
-    if (!patient?.KyTuDauBHYT) return 0
-
-    return (
-      bhytCategories.find((category) => category.KyTuDauBHYT === patient.KyTuDauBHYT)
-        ?.TyLeHuong || 0
-    )
-  }
-
-  const calculateRevenueParts = (maBenhAn, giaGoc, giaCuoiOverride = null) => {
-    if (giaCuoiOverride !== null && giaCuoiOverride !== undefined && giaCuoiOverride !== '') {
-      const netRevenue = Math.max(0, Number(giaCuoiOverride) || 0)
-      return {
-        netRevenue,
-        insuranceAmount: Math.max(0, Number(giaGoc || 0) - netRevenue),
-      }
-    }
-
-    const tyLeHuong = getBhytRate(maBenhAn)
-    const insuranceAmount = Math.round(giaGoc * tyLeHuong)
-    const netRevenue = Math.max(0, giaGoc - insuranceAmount)
-
-    return { netRevenue, insuranceAmount }
-  }
-
-  const getConfigService = (maCauHinh) => {
-    const config = branchServices.find((item) => item.MaCauHinh === maCauHinh)
-    if (!config) return { config: null, service: getService('') }
-
-    return { config, service: getService(config.MaDichVu) }
-  }
-
-  const getAppointmentCountForSchedule = (schedule) => {
-    if (schedule.SoLichHenDangCo !== undefined && schedule.SoLichHenDangCo !== null) {
-      return Number(schedule.SoLichHenDangCo || 0)
-    }
-
-    const configIds = branchServices
-      .filter((config) => config.MaChiNhanh === schedule.MaChiNhanh)
-      .map((config) => config.MaCauHinh)
-
-    return appointments.filter(
-      (appointment) =>
-        appointment.NgayKham === schedule.NgayTruc &&
-        Number(appointment.CaKham) === Number(schedule.CaTruc) &&
-        configIds.includes(appointment.MaCauHinh) &&
-        (appointment.MaBacSi ? appointment.MaBacSi === schedule.MaBacSi : true) &&
-        appointment.TrangThai !== 'Đã hủy' &&
-        appointment.TrangThai !== 'Đã hủy (Hệ thống hoàn tiền)',
-    ).length
-  }
 
   const getAffectedAppointmentsForSchedule = (schedule) => {
     const configIds = branchServices
@@ -358,16 +328,6 @@ export default function AdminDashboard({
     )
   }
 
-  const pushScheduleNotifications = (affectedAppointments, messageBuilder) => {
-    const patientNotifications = affectedAppointments.map((appointment) => ({
-      MaBenhAn: appointment.MaBenhAn,
-      MaBenhNhan: appointment.MaBenhAn,
-      message: messageBuilder(appointment),
-    }))
-
-    addPatientNotifications?.(patientNotifications)
-    return patientNotifications.length
-  }
 
   const filteredDoctorSchedules = doctorSchedules.filter((schedule) => {
     const matchedStartDate =
@@ -380,12 +340,6 @@ export default function AdminDashboard({
     return matchedStartDate && matchedEndDate && matchedDoctor
   })
 
-  useEffect(() => {
-    if (activeMenu === 'schedules') {
-      loadAdminDoctorSchedules()
-    }
-  }, [activeMenu, scheduleFilters.TuNgay, scheduleFilters.DenNgay, scheduleFilters.MaBacSi])
-
   const getReportMonthRangeLabel = (monthValue) => {
     const [year, month] = monthValue.split('-').map(Number)
     const lastDay = new Date(year, month, 0).getDate()
@@ -394,10 +348,6 @@ export default function AdminDashboard({
     return `Chu kỳ báo cáo: Từ ngày 01/${formattedMonth}/${year} đến ngày ${lastDay}/${formattedMonth}/${year}`
   }
 
-  const isInReportMonth = (dateValue) => Boolean(dateValue?.startsWith(reportMonth))
-
-  const isCompletedVisitStatus = (status) => status === 'Hoàn thành' || status === 'Đã khám'
-
   const loadAdminMonthlyReport = async () => {
     if (!reportMonth) return
 
@@ -405,20 +355,54 @@ export default function AdminDashboard({
     setAdminReportError('')
 
     try {
-      const response = await getMonthlyReport(reportMonth, identityAccessToken)
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result?.detail || 'Không thể tải báo cáo tháng từ hệ thống.')
+      const responses = await Promise.all([
+        getMonthlyReport(reportMonth, identityAccessToken),
+        getGroupedReport('branch', reportMonth, identityAccessToken),
+        getGroupedReport('doctor', reportMonth, identityAccessToken),
+        getGroupedReport('service', reportMonth, identityAccessToken),
+      ])
+      const [result, branchReport, doctorReport, serviceReport] = await Promise.all(
+        responses.map((response) => response.json()),
+      )
+      const failedIndex = responses.findIndex((response) => !response.ok)
+      if (failedIndex !== -1) {
+        const errorBody = [result, branchReport, doctorReport, serviceReport][failedIndex]
+        throw new Error(errorBody?.detail || 'Không thể tải báo cáo tháng từ hệ thống.')
       }
 
       setAdminReportData({
         totalNetRevenue: result.revenue,
-        totalInsuranceAmount: 0,
+        totalInsuranceAmount: result.insurance_discount,
         completedAppointmentCount: result.paid_count,
         cancellationRate: null,
         totalServiceUsage: result.paid_count,
-        branchRows: [], doctorRows: [], serviceContributionRows: [],
+        legacyEstimatedCount: result.legacy_estimated_count,
+        branchRows: branchReport.map((item) => ({
+          maChiNhanh: item.code || '',
+          tenChiNhanh: branches.find((branch) => branch.MaChiNhanh === item.code)?.TenChiNhanh || item.code || 'Không rõ chi nhánh',
+          completedCount: item.paid_count,
+          netRevenue: item.revenue,
+          insuranceAmount: item.insurance_discount,
+        })),
+        doctorRows: doctorReport.map((item) => {
+          const doctor = staffList.find((staff) => staff.MaNhanSu === item.code)
+          return {
+            key: item.code || 'unknown',
+            hoTen: doctor?.HoTen || item.code || 'Không rõ bác sĩ',
+            chuyenKhoa: doctor?.ChuyenKhoa || 'Chưa rõ',
+            count: item.paid_count,
+          }
+        }),
+        serviceContributionRows: serviceReport.map((item) => {
+          const service = services.find((entry) => entry.MaDichVu === item.code)
+          return {
+            key: item.code || 'unknown',
+            tenDichVu: service?.TenDichVu || item.code || 'Không rõ dịch vụ',
+            loaiDichVu: service?.LoaiDichVu || 'Chưa rõ',
+            count: item.paid_count,
+            value: item.revenue,
+          }
+        }),
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể tải báo cáo tháng từ hệ thống.'
@@ -430,204 +414,62 @@ export default function AdminDashboard({
     }
   }
 
+  const onLoadAdminMonthlyReport = useEffectEvent(() => { void loadAdminMonthlyReport() })
   useEffect(() => {
-    loadAdminMonthlyReport()
-  }, [reportMonth])
+    if (!identityAccessToken) return undefined
+    const timer = window.setTimeout(() => onLoadAdminMonthlyReport(), 0)
+    return () => window.clearTimeout(timer)
+  }, [reportMonth, identityAccessToken, branches, staffList, services, billingReload])
 
-  const reportData = (() => {
-    const appointmentsInMonth = appointments.filter((appointment) =>
-      isInReportMonth(appointment.NgayKham),
-    )
-    const completedAppointments = appointmentsInMonth
-      .filter((appointment) => isCompletedVisitStatus(appointment.TrangThai))
-      .map((appointment) => {
-        const { config, service } = getConfigService(appointment.MaCauHinh)
-        const { netRevenue, insuranceAmount } = calculateRevenueParts(
-          appointment.MaBenhAn,
-          service.GiaGoc,
-          appointment.GiaCuoi,
-        )
-        const doctor = doctorSchedules.find(
-          (schedule) =>
-            schedule.MaChiNhanh === config?.MaChiNhanh &&
-            schedule.NgayTruc === appointment.NgayKham &&
-            schedule.CaTruc === appointment.CaKham,
-        )
-
-        return {
-          id: appointment.MaLichHen,
-          type: 'Khám',
-          groupLabel: 'Khám',
-          maBenhAn: appointment.MaBenhAn,
-          maChiNhanh: config?.MaChiNhanh || '',
-          maDichVu: service.MaDichVu,
-          tenDichVu: service.TenDichVu,
-          chuyenKhoa: service.ChuyenKhoa,
-          loaiDichVu: service.LoaiDichVu,
-          giaGoc: service.GiaGoc,
-          netRevenue,
-          insuranceAmount,
-          maBacSi: appointment.MaBacSi || doctor?.MaBacSi || '',
-          ngayPhatSinh: appointment.NgayKham,
-        }
-      })
-
-    const completedLabTests = labTestDetails
-      .filter((test) => test.TrangThai === 'Hoàn thành' && isInReportMonth(test.NgayThucHien))
-      .map((test) => {
-        const service = getService(test.MaDichVu)
-        const { netRevenue, insuranceAmount } = calculateRevenueParts(
-          test.MaBenhAn,
-          service.GiaGoc,
-          test.GiaCuoi,
-        )
-
-        return {
-          id: test.MaChiTietXN,
-          type: 'Xét nghiệm',
-          groupLabel: 'Xét nghiệm',
-          maBenhAn: test.MaBenhAn,
-          maChiNhanh: test.MaChiNhanh,
-          maDichVu: service.MaDichVu,
-          tenDichVu: service.TenDichVu,
-          chuyenKhoa: service.ChuyenKhoa,
-          loaiDichVu: service.LoaiDichVu,
-          giaGoc: service.GiaGoc,
-          netRevenue,
-          insuranceAmount,
-          maBacSi: test.MaBacSi,
-          ngayPhatSinh: test.NgayThucHien,
-        }
-      })
-
-    const completedTreatmentSessions = treatmentRevenueDetails
-      .filter(
-        (treatment) =>
-          treatment.TrangThai === 'Hoàn thành' && isInReportMonth(treatment.NgayThucHien),
-      )
-      .map((treatment) => {
-        const service = getService(treatment.MaDichVu)
-        const { netRevenue, insuranceAmount } = calculateRevenueParts(
-          treatment.MaBenhAn,
-          service.GiaGoc,
-          treatment.GiaCuoi,
-        )
-
-        return {
-          id: treatment.MaLichTrinh,
-          type: 'Điều trị',
-          groupLabel: 'Điều trị nhiều buổi',
-          maBenhAn: treatment.MaBenhAn,
-          maChiNhanh: treatment.MaChiNhanh,
-          maDichVu: service.MaDichVu,
-          tenDichVu: service.TenDichVu,
-          chuyenKhoa: service.ChuyenKhoa,
-          loaiDichVu: service.LoaiDichVu,
-          giaGoc: service.GiaGoc,
-          netRevenue,
-          insuranceAmount,
-          maBacSi: treatment.MaBacSi,
-          ngayPhatSinh: treatment.NgayThucHien,
-        }
-      })
-
-    const completedFinancialRecords = [
-      ...completedAppointments,
-      ...completedLabTests,
-      ...completedTreatmentSessions,
-    ]
-    const totalNetRevenue = completedFinancialRecords.reduce(
-      (sum, record) => sum + record.netRevenue,
-      0,
-    )
-    const totalInsuranceAmount = completedFinancialRecords.reduce(
-      (sum, record) => sum + record.insuranceAmount,
-      0,
-    )
-    const cancelledAppointments = appointmentsInMonth.filter((appointment) =>
-      appointment.TrangThai.includes('Đã hủy'),
-    ).length
-    const cancellationRate =
-      appointmentsInMonth.length > 0
-        ? Math.round((cancelledAppointments / appointmentsInMonth.length) * 1000) / 10
-        : 0
-
-    const branchRows = branches.map((branch) => {
-      const branchRecords = completedFinancialRecords.filter(
-        (record) => record.maChiNhanh === branch.MaChiNhanh,
-      )
-      const branchCompletedAppointments = completedAppointments.filter(
-        (record) => record.maChiNhanh === branch.MaChiNhanh,
-      )
-
-      return {
-        maChiNhanh: branch.MaChiNhanh,
-        tenChiNhanh: branch.TenChiNhanh,
-        completedCount: branchCompletedAppointments.length,
-        netRevenue: branchRecords.reduce((sum, record) => sum + record.netRevenue, 0),
-        insuranceAmount: branchRecords.reduce((sum, record) => sum + record.insuranceAmount, 0),
-      }
-    })
-
-    const rankBy = (records, keyGetter, valueGetter) => {
-      const map = new Map()
-
-      records.forEach((record) => {
-        const key = keyGetter(record)
-        if (!key) return
-
-        const current = map.get(key) || { key, count: 0, value: 0, sample: record }
-        map.set(key, {
-          ...current,
-          count: current.count + 1,
-          value: current.value + valueGetter(record),
+  useEffect(() => {
+    if (activeMenu !== 'billing' || !identityAccessToken) return undefined
+    let active = true
+    const timer = window.setTimeout(async () => {
+      setBillingLoading(true)
+      setBillingError('')
+      try {
+        const response = await getAdminInvoices(identityAccessToken, {
+          limit: TABLE_PAGE_SIZE, offset: billingPage * TABLE_PAGE_SIZE,
         })
-      })
-
-      return Array.from(map.values()).sort((a, b) => {
-        if (b.value !== a.value) return b.value - a.value
-        return b.count - a.count
-      })
-    }
-
-    const serviceContributionRows = rankBy(
-      completedFinancialRecords,
-      (record) => record.maDichVu,
-      (record) => record.netRevenue,
-    ).map((item) => ({
-      ...item,
-      tenDichVu: item.sample.tenDichVu,
-      loaiDichVu: item.sample.groupLabel,
-    }))
-    const doctorRows = rankBy(
-      completedAppointments,
-      (record) => record.maBacSi,
-      () => 1,
-    ).map((item) => {
-      const doctor = staffList.find((staff) => staff.MaNhanSu === item.key)
-      return {
-        ...item,
-        hoTen: doctor?.HoTen || 'Chưa phân công',
-        chuyenKhoa: doctor?.ChuyenKhoa || 'Chưa rõ',
+        const result = await response.json()
+        if (!response.ok || !Array.isArray(result?.items)) {
+          throw new Error(typeof result?.detail === 'string' ? result.detail : 'Không thể tải hóa đơn.')
+        }
+        if (active) {
+          setBillingInvoices(result.items)
+          setBillingTotal(result.total)
+        }
+      } catch (error) {
+        if (active) setBillingError(error instanceof Error ? error.message : 'Không thể tải hóa đơn.')
+      } finally {
+        if (active) setBillingLoading(false)
       }
-    })
+    }, 0)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [activeMenu, identityAccessToken, billingPage, billingReload])
 
-    return {
-      totalNetRevenue,
-      totalInsuranceAmount,
-      completedAppointmentCount: completedAppointments.length,
-      cancellationRate,
-      totalServiceUsage: completedFinancialRecords.length,
-      branchRows,
-      doctorRows,
-      serviceContributionRows,
+  const handleRefund = async (invoice) => {
+    if (!window.confirm(`Ghi nhận hoàn tiền cho hóa đơn ${invoice.id}? Thao tác này chỉ cập nhật trạng thái trong hệ thống, không chuyển tiền qua ngân hàng.`)) return
+    setRefundBusyId(invoice.id)
+    try {
+      const response = await simulateAdminRefund(identityAccessToken, invoice.id)
+      const result = await response.json()
+      if (!response.ok) throw new Error(typeof result?.detail === 'string' ? result.detail : 'Không thể ghi nhận hoàn tiền.')
+      notify('Đã hoàn tiền. Bệnh nhân có thể làm mới trang rồi hủy lịch chưa check-in.')
+      setBillingReload((value) => value + 1)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Không thể ghi nhận hoàn tiền.', 'error')
+    } finally {
+      setRefundBusyId('')
     }
-  })()
+  }
+
 
   const displayReportData = adminReportData || {
     totalNetRevenue: 0, totalInsuranceAmount: 0,
     completedAppointmentCount: 0, cancellationRate: null,
-    totalServiceUsage: 0, branchRows: [], doctorRows: [], serviceContributionRows: [],
+    totalServiceUsage: 0, legacyEstimatedCount: 0,
+    branchRows: [], doctorRows: [], serviceContributionRows: [],
   }
 
   const filteredBranchServices = branchServices.filter((config) => {
@@ -828,7 +670,8 @@ export default function AdminDashboard({
     NgayTruc: schedule.NgayTruc,
     CaTruc: Number(schedule.CaTruc),
     TrangThai: schedule.TrangThai || 'Đang hoạt động',
-    SoLichHenDangCo: Number(schedule.SoLichHenDangCo || 0),
+    SoLichHenDangCo: Number(schedule.confirmed_appointments ?? schedule.SoLichHenDangCo ?? 0),
+    SoChoDangGiu: Number(schedule.active_holds ?? schedule.SoChoDangGiu ?? 0),
     SDT: schedule.SDT || '',
     ChuyenKhoa: schedule.ChuyenKhoa || '',
   })
@@ -870,6 +713,13 @@ export default function AdminDashboard({
       setAdminScheduleLoading(false)
     }
   }
+
+  const onLoadAdminDoctorSchedules = useEffectEvent(() => { void loadAdminDoctorSchedules() })
+  useEffect(() => {
+    if (activeMenu !== 'schedules') return undefined
+    const timer = window.setTimeout(() => onLoadAdminDoctorSchedules(), 0)
+    return () => window.clearTimeout(timer)
+  }, [activeMenu, scheduleFilters.TuNgay, scheduleFilters.DenNgay, scheduleFilters.MaBacSi])
 
   const handleToggleScheduleSelection = (thu, ca) => {
     const key = getScheduleSelectionKey(thu, ca)
@@ -978,15 +828,16 @@ export default function AdminDashboard({
 
   const handleCancelSchedule = async (schedule) => {
     const affectedAppointments = getAffectedAppointmentsForSchedule(schedule)
-    const affectedCount = Number(schedule.SoLichHenDangCo ?? affectedAppointments.length)
     const affectedAppointmentIds = new Set(affectedAppointments.map((appointment) => appointment.MaLichHen))
 
-    if (affectedCount > 0) {
-      notify('Ca trực đang có lịch hẹn; cần quy trình hoàn tiền/chuyển lịch trước khi hủy.', 'error')
-      return
-    }
-
     try {
+      const impact = await getDoctorScheduleImpact(identityAccessToken, schedule.id)
+      if (!impact.can_change) {
+        notify(`Không thể hủy ca: ${impact.confirmed_appointments} lịch hẹn, ${impact.active_holds} chỗ đang giữ.`, 'error')
+        await loadAdminDoctorSchedules()
+        return
+      }
+      if (!window.confirm(`Hủy ca trực ${schedule.MaLichTruc} ngày ${schedule.NgayTruc}?`)) return
       const response = await cancelDoctorSchedules({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1089,6 +940,12 @@ export default function AdminDashboard({
     const affectedAppointmentIds = new Set(affectedAppointments.map((appointment) => appointment.MaLichHen))
 
     try {
+      const impact = await getDoctorScheduleImpact(identityAccessToken, schedule.id)
+      if (!impact.can_change) {
+        notify(`Không thể chuyển ca: ${impact.confirmed_appointments} lịch hẹn, ${impact.active_holds} chỗ đang giữ.`, 'error')
+        await loadAdminDoctorSchedules()
+        return
+      }
       const response = await transferDoctorSchedules({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1179,6 +1036,8 @@ export default function AdminDashboard({
                 <th>Số CCCD</th>
                 <th>Số điện thoại</th>
                 <th>Ngày sinh</th>
+                <th>BHYT</th>
+                <th>Xác minh</th>
               </tr>
             </thead>
             <tbody>
@@ -1189,11 +1048,24 @@ export default function AdminDashboard({
                   <td>{patient.cccd}</td>
                   <td>{patient.phone || 'Chưa cập nhật'}</td>
                   <td>{patient.date_of_birth || 'Chưa cập nhật'}</td>
+                  <td>{patient.insurance_card_number ? `${patient.insurance_category_code} · ${patient.insurance_card_number}` : 'Không sử dụng'}</td>
+                  <td>
+                    <span className={`status-pill ${patient.insurance_verified ? 'active' : 'muted'}`}>
+                      {patient.insurance_verified ? 'Đã xác minh' : 'Chưa xác minh'}
+                    </span>
+                    {patient.insurance_card_number && (
+                      <button type="button" className="admin-secondary-button"
+                        disabled={patientInsuranceBusyId === patient.id}
+                        onClick={() => handleVerifyPatientInsurance(patient)}>
+                        {patient.insurance_verified ? 'Hủy xác minh' : 'Xác minh'}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
               {(patientLoading || patientError || patients.length === 0) && (
                 <tr>
-                  <td colSpan="5">{patientLoading ? 'Đang tải bệnh nhân...' : patientError ? 'Không thể tải danh sách. Hãy thử làm mới.' : 'Không tìm thấy bệnh nhân phù hợp.'}</td>
+                  <td colSpan="7">{patientLoading ? 'Đang tải bệnh nhân...' : patientError ? 'Không thể tải danh sách. Hãy thử làm mới.' : 'Không tìm thấy bệnh nhân phù hợp.'}</td>
                 </tr>
               )}
             </tbody>
@@ -1723,19 +1595,37 @@ export default function AdminDashboard({
             <tbody>
               {getPageRows(filteredDoctorSchedules, schedulePage).map((schedule) => {
                 const isCancelled = schedule.TrangThai === 'Đã hủy'
+                const hasReservations = schedule.SoLichHenDangCo > 0 || schedule.SoChoDangGiu > 0
+                const canRequestChange = Boolean(schedule.id) && !adminScheduleLoading && !hasReservations
                 return (
                   <tr key={schedule.id ? `schedule-${schedule.id}` : `${schedule.MaLichTruc}-${schedule.MaBacSi}-${schedule.MaChiNhanh}-${schedule.NgayTruc}-${schedule.CaTruc}`}>
                     <td>{getDoctorName(schedule.MaBacSi)}</td>
                     <td>{getBranchName(schedule.MaChiNhanh)}</td>
                     <td>{schedule.NgayTruc}</td>
                     <td>Ca {schedule.CaTruc}</td>
-                    <td>Chưa liên kết Appointment</td>
+                    <td>
+                      {schedule.SoLichHenDangCo}
+                      {schedule.SoChoDangGiu > 0 && <small> ({schedule.SoChoDangGiu} chỗ đang giữ)</small>}
+                    </td>
                     <td>
                       <span className={`status-pill ${isCancelled ? 'danger' : 'active'}`}>
                         {isCancelled ? 'Đã hủy' : 'Đang hoạt động'}
                       </span>
                     </td>
-                    <td>Chưa hỗ trợ hủy/chuyển ca</td>
+                    <td>
+                      {!isCancelled && (
+                        <div className="admin-actions-row" title={hasReservations ? 'Cần xử lý lịch hẹn/chỗ đang giữ trước' : undefined}>
+                          <button type="button" className="admin-secondary-button"
+                            disabled={!canRequestChange} onClick={() => handleOpenDoctorTransfer(schedule)}>
+                            Chuyển ca
+                          </button>
+                          <button type="button" className="admin-danger-button"
+                            disabled={!canRequestChange} onClick={() => handleCancelSchedule(schedule)}>
+                            Hủy ca
+                          </button>
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 )
               })}
@@ -1831,7 +1721,7 @@ export default function AdminDashboard({
             type="month"
             value={reportMonth}
             onChange={(event) => {
-              setReportMonth(event.target.value || '2026-06')
+              setReportMonth(event.target.value || getTodayDateKey().slice(0, 7))
               setReportBranchPage(0)
               setReportDoctorPage(0)
               setReportServicePage(0)
@@ -1845,19 +1735,19 @@ export default function AdminDashboard({
           <DollarSign size={24} />
           <span>Tổng Doanh thu Tháng</span>
           <strong>{formatMoney(displayReportData.totalNetRevenue)}</strong>
-          <small>Tổng tiền đã ghi nhận thanh toán giả lập, không phải giao dịch ngân hàng</small>
+          <small>Theo trạng thái hóa đơn và khoản lịch sử ước tính; chưa đối soát ngân hàng</small>
         </div>
         <div className="finance-kpi-card insurance">
           <ClipboardList size={24} />
           <span>Tổng BHYT Chi Trả</span>
           <strong>{formatMoney(displayReportData.totalInsuranceAmount)}</strong>
-          <small>Phần bảo hiểm hỗ trợ bệnh nhân trong tháng</small>
+          <small>Giảm trừ trên hóa đơn; khoản lịch sử không xác nhận được BHYT thực trả</small>
         </div>
         <div className="finance-kpi-card success">
           <Activity size={24} />
-          <span>Hóa đơn đã thanh toán (giả lập)</span>
+          <span>Hóa đơn đã thanh toán</span>
           <strong>{displayReportData.completedAppointmentCount}</strong>
-          <small>Số hóa đơn được ghi nhận thanh toán giả lập trong tháng</small>
+          <small>{displayReportData.legacyEstimatedCount} khoản lịch sử chỉ có ngày hẹn, chưa rõ thời điểm thanh toán</small>
         </div>
         <div className="finance-kpi-card danger">
           <Users size={24} />
@@ -1874,7 +1764,7 @@ export default function AdminDashboard({
             <thead>
               <tr>
                 <th>Chi nhánh</th>
-                <th>Tổng lượt khám thành công</th>
+                <th>Số khoản ghi nhận doanh thu</th>
                 <th>Doanh thu thực thu</th>
                 <th>Tiền bảo hiểm chi trả</th>
               </tr>
@@ -1895,7 +1785,7 @@ export default function AdminDashboard({
       </section>
 
       <section className="admin-card">
-        <h2>Bảng xếp hạng Bác sĩ Xuất sắc trong tháng</h2>
+        <h2>Doanh thu theo bác sĩ trong tháng</h2>
         <div className="admin-table-wrap">
           <table className="admin-table">
             <thead>
@@ -1903,7 +1793,7 @@ export default function AdminDashboard({
                 <th>Thứ hạng</th>
                 <th>Bác sĩ</th>
                 <th>Chuyên khoa</th>
-                <th>Số ca đã khám</th>
+                <th>Số khoản ghi nhận doanh thu</th>
               </tr>
             </thead>
             <tbody>
@@ -1962,10 +1852,59 @@ export default function AdminDashboard({
     </div>
   )
 
+  const renderBilling = () => (
+    <div className="admin-stack">
+      <section className="admin-card">
+        <div className="admin-section-header">
+          <div>
+            <h2>Hóa đơn và hoàn tiền</h2>
+            <p>Hóa đơn lịch sử chỉ xem. Chỉ ghi nhận hoàn tiền cho hóa đơn phát sinh và đã thanh toán trong hệ thống; không chuyển tiền qua ngân hàng.</p>
+          </div>
+          <button type="button" className="admin-secondary-button" onClick={() => setBillingReload((value) => value + 1)} disabled={billingLoading}>Làm mới</button>
+        </div>
+        {billingError && <p role="alert" className="admin-feedback">{billingError}</p>}
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead><tr><th>Mã hóa đơn</th><th>Mã lịch hẹn</th><th>Dịch vụ</th><th>Số tiền</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <tbody>
+              {billingInvoices.map((invoice) => (
+                <tr key={invoice.id}>
+                  <td title={invoice.id}>{invoice.id.slice(0, 8)}…</td>
+                  <td title={invoice.appointment_id}>{invoice.appointment_id.slice(0, 8)}…</td>
+                  <td>{invoice.service_code}</td>
+                  <td>{formatMoney(invoice.amount_due)}</td>
+                  <td><span className={`status-pill ${invoice.status === 'paid' ? 'active' : 'muted'}`}>
+                    {invoice.status === 'paid' ? 'Đã thanh toán' : invoice.status === 'refunded' ? 'Đã hoàn tiền' : 'Chờ thanh toán'}
+                  </span></td>
+                  <td>
+                    {invoice.status === 'paid' && invoice.payment_method === 'simulated' && invoice.source === 'live' ? (
+                      <button type="button" className="admin-secondary-button" onClick={() => handleRefund(invoice)} disabled={refundBusyId === invoice.id}>Ghi nhận hoàn tiền</button>
+                    ) : (
+                      <span
+                        className="admin-action-note"
+                        title={invoice.source !== 'live' ? 'Hóa đơn lịch sử không có giao dịch thanh toán được xác minh nên không thể hoàn tiền trong hệ thống.' : undefined}
+                      >
+                        {invoice.status === 'refunded' ? 'Đã hoàn tiền' : invoice.source !== 'live' ? 'Lịch sử · chỉ xem' : invoice.status === 'pending' ? 'Chờ thanh toán' : 'Không áp dụng'}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {!billingLoading && !billingError && billingInvoices.length === 0 && <tr><td colSpan="6">Chưa có hóa đơn.</td></tr>}
+              {billingLoading && <tr><td colSpan="6">Đang tải hóa đơn...</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <TablePagination page={billingPage} total={billingTotal} label="hóa đơn" onPageChange={setBillingPage} disabled={billingLoading} />
+      </section>
+    </div>
+  )
+
   const renderContent = () => {
     if (activeMenu === 'staff') return renderStaffManagement()
     if (activeMenu === 'services') return renderServiceConfig()
     if (activeMenu === 'schedules') return renderSchedules()
+    if (activeMenu === 'billing') return renderBilling()
     return renderReports()
   }
 
@@ -1973,6 +1912,7 @@ export default function AdminDashboard({
     { key: 'staff', label: 'Quản lý Nhân sự & Bệnh nhân', icon: Users },
     { key: 'services', label: 'Cấu hình Dịch vụ Chi nhánh', icon: Building2 },
     { key: 'schedules', label: 'Quản lý Lịch trực', icon: Calendar },
+    { key: 'billing', label: 'Hóa đơn & Hoàn tiền', icon: DollarSign },
     { key: 'reports', label: 'Báo cáo Thống kê', icon: Activity },
   ]
 

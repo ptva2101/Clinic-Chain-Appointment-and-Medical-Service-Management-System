@@ -1,0 +1,13 @@
+# BHYT và Billing
+
+OpenAPI chạy tại `http://127.0.0.1:8002/openapi.json` (Registry) và `http://127.0.0.1:8005/openapi.json` (Billing); giao diện thử API ở `/docs` của mỗi service.
+
+- Admin tạo nhóm BHYT qua `POST /api/v1/registry/insurance/categories` với `code`, `name`, `coverage_bps` (0–10000; 8000 = 80%). `GET` cùng đường dẫn cho danh sách.
+- Bệnh nhân cập nhật đồng thời `insurance_card_number` và `insurance_category_code` qua `PATCH /api/v1/registry/patients/me`. Thay đổi này tự hủy xác minh cũ. Admin kiểm tra thẻ ngoài hệ thống rồi gọi `PATCH /api/v1/registry/patients/{id}/insurance-verification` với `{"verified": true}`. Không có tích hợp xác thực thẻ với cơ quan BHYT.
+- Trên giao diện, bệnh nhân chọn **Cập nhật BHYT** trong hồ sơ; admin xác minh hoặc hủy xác minh tại danh sách bệnh nhân. Mức hưởng hiển thị là 0% cho tới khi được xác minh. Các nhóm BHYT được tải từ Registry, không dùng tỷ lệ mẫu cố định trong frontend.
+- Billing lấy BHYT từ API nội bộ Registry bằng `REGISTRY_INTERNAL_TOKEN`, không đọc `registry_db`. Khi `POST /api/v1/billing/invoices`, giá dịch vụ và tỷ lệ hưởng được chụp lại: `insurance_discount = floor(list_price * coverage_bps / 10000)`, `amount_due = list_price - insurance_discount`. Thẻ chưa xác minh hưởng 0%; sửa hồ sơ/giá sau đó không đổi hóa đơn cũ.
+- Bệnh nhân thanh toán giả lập qua `POST /api/v1/billing/invoices/{id}/simulate-payment`. Admin hoàn tiền giả lập qua `POST /api/v1/billing/invoices/{id}/simulate-refund`; yêu cầu chỉ áp dụng hóa đơn live đã thanh toán giả lập và chạy lại không hoàn lần hai. Không chuyển tiền thật.
+- Trên giao diện, admin vào **Hóa đơn & Hoàn tiền** để xem `GET /api/v1/billing/invoices?limit=10&offset=0` và bấm **Hoàn tiền giả lập** (có xác nhận). Bệnh nhân bấm **Làm mới lịch và hóa đơn**, xem trạng thái **Đã hoàn tiền giả lập** tại **Lịch hẹn của tôi** rồi mới có thể bấm **Hủy lịch** nếu lịch chưa check-in. Không tự hoàn tiền khi bấm hủy.
+- Admin xem `GET /api/v1/billing/reports/monthly?month=YYYY-MM` hoặc `/reports/{group_by}?month=YYYY-MM` với `group_by` là `branch`, `doctor` hoặc `service`. Các báo cáo trả cả `revenue` và `insurance_discount`; màn hình admin lấy trực tiếp các tổng này từ Billing. `legacy_estimated_count` và `legacy_lab_count` phân biệt khoản cũ chỉ biết ngày hẹn, không biết thời điểm thanh toán; giảm trừ của khoản cũ không chứng minh được là BHYT thực trả. `GET /api/v1/billing/legacy-lab-charges` liệt kê 13 khoản xét nghiệm cũ.
+
+Mỗi service tự migration bảng của mình khi Docker khởi động. Tài khoản/chi nhánh/dịch vụ từ dump cũ được để khóa; không dùng mật khẩu cũ. Xem [nhập dump cũ](mysql-dump-import.md).

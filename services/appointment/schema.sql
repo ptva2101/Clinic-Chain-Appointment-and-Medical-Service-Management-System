@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     KEY ix_appointment_patient (patient_id, duty_date),
     KEY ix_appointment_doctor (doctor_code, duty_date, shift),
     KEY ix_appointment_date_status (duty_date, status),
+    KEY ix_appointment_reconcile (status, updated_at, id),
     CONSTRAINT ck_appointment_status CHECK (
         status IN ('pending', 'confirmed', 'cancel_pending', 'cancelled', 'failed', 'historical')
     )

@@ -163,6 +163,10 @@ def test_internal_confirmation_and_expiry(client):
     assert http.post(confirm, json={"appointment_id": "AP1"},
                      headers={"X-Service-Token": "wrong"}).status_code == 401
     service = {"X-Service-Token": "service-secret"}
+    internal_get = f"{base}/internal/holds/{hold_id}"
+    assert http.get(internal_get).status_code == 401
+    assert http.get(internal_get, headers=service).json()["state"] == "held"
+    assert http.get(f"{base}/internal/holds/{uuid4()}", headers=service).status_code == 404
     assert http.post(confirm, json={"appointment_id": "AP1"}, headers=service).json()["state"] == "confirmed"
     assert http.post(confirm, json={"appointment_id": "AP1"}, headers=service).status_code == 200
     assert http.post(confirm, json={"appointment_id": "AP2"}, headers=service).status_code == 409

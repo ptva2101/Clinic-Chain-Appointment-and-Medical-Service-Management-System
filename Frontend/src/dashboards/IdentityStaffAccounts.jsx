@@ -16,6 +16,13 @@ const ACCOUNT_ROLES = [
   ...STAFF_ROLES,
 ]
 
+function profileSourceLabel(profile) {
+  if (profile.source === 'legacy_demo' || profile.source === 'legacy_mysql') {
+    return profile.identity_account_id ? 'Đã nhập · đã liên kết' : 'Đã nhập · chưa liên kết'
+  }
+  return profile.identity_account_id ? 'Tạo từ tài khoản' : 'Chưa liên kết tài khoản'
+}
+
 async function loadAllAccounts(accessToken) {
   const accounts = []
   for (let offset = 0; ; offset += 100) {
@@ -299,7 +306,7 @@ export default function IdentityStaffAccounts({ accessToken, currentAccountId, o
         <div className="admin-section-header">
           <div>
             <h2>Hồ sơ nhân viên Registry</h2>
-            <p>Gồm hồ sơ nhân viên từ Registry. Cột Nguồn cho biết hồ sơ mẫu đã được cấp tài khoản hay chưa.</p>
+            <p>Gồm hồ sơ nhân viên từ Registry. Cột Nguồn cho biết hồ sơ được tạo từ tài khoản hay nhập từ hệ thống cũ và đã liên kết tài khoản chưa.</p>
           </div>
           <button type="button" className="admin-secondary-button" disabled={profileLoading} onClick={() => { setProfileLoading(true); setProfileReload((value) => value + 1) }}>Làm mới</button>
         </div>
@@ -320,7 +327,7 @@ export default function IdentityStaffAccounts({ accessToken, currentAccountId, o
                   <td>{profile.specialty || '—'}</td>
                   <td>{profile.branch_code || '—'}</td>
                   <td>{profile.phone || '—'}</td>
-                  <td>{profile.identity_account_id ? (profile.source === 'legacy_demo' ? 'Từ dữ liệu mẫu · đã có tài khoản' : 'Đã liên kết tài khoản') : 'Dữ liệu mẫu · chưa có tài khoản'}</td>
+                  <td>{profileSourceLabel(profile)}</td>
                 </tr>
               ))}
               {(profileLoading || profileError || profiles.length === 0) && <tr><td colSpan="7">{profileLoading ? 'Đang tải nhân viên...' : profileError ? 'Không thể tải hồ sơ. Hãy thử làm mới.' : 'Chưa có hồ sơ nhân viên.'}</td></tr>}

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useEffectEvent, useState } from 'react'
 import { LogOut } from 'lucide-react'
 import medicalLogoImage from '../assets/medical-logo-cutout.png'
 import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
@@ -6,7 +6,7 @@ import { NotificationBell } from '../shared/Widgets.jsx'
 import { bookTreatment, cancelPatientAppointment, createPatientAppointment, getPatientAppointments, getPatientNotifications } from '../api/appointment.js'
 import { getPatientMedicalHistory } from '../api/clinical.js'
 import { getSchedulingAvailability } from '../api/scheduling.js'
-import { updatePatientProfile } from '../api/patientProfile.js'
+import { getPatientProfile, updatePatientProfile } from '../api/patientProfile.js'
 import { createPatientInvoice, getPatientInvoices, simulatePatientPayment } from '../api/billing.js'
 import { getFutureDateKey, getTodayDateKey } from '../shared/dates.js'
 import TablePagination from './TablePagination.jsx'
@@ -37,6 +37,7 @@ export default function PatientDashboard({
 	    CCCD: user?.CCCD || '',
 	    MaSoBHYT: user?.MaSoBHYT || '',
 	    KyTuDauBHYT: user?.KyTuDauBHYT || '',
+	    BHYTVerified: Boolean(user?.BHYTVerified),
 	  }
 	  const [patient, setPatient] = useState(initialPatientProfile)
   const patientNotifications = notifications.filter(
@@ -55,15 +56,15 @@ export default function PatientDashboard({
 	  const [labTechnicians] = useState([])
   const [treatmentSchedules, setTreatmentSchedules] = useState([])
   const [bookingForm, setBookingForm] = useState({
-    MaChiNhanh: 'CN_CG',
-    MaDichVu: 'DV_KHAM_NOI',
+    MaChiNhanh: '',
+    MaDichVu: '',
     NgayKham: getTodayDateKey(),
-    CaKham: '1',
-    MaBacSi: 'BS001',
+    CaKham: '',
+    MaBacSi: '',
   })
 	  const [treatmentDrafts, setTreatmentDrafts] = useState({})
 	  const [activeTreatmentId, setActiveTreatmentId] = useState('')
-	  const [selectedVisitId, setSelectedVisitId] = useState('LK_001')
+  const [selectedVisitId, setSelectedVisitId] = useState('')
 	  const [paymentModal, setPaymentModal] = useState(null)
 	  const [isConfirmingPayment, setIsConfirmingPayment] = useState(false)
 	  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false)
@@ -76,6 +77,12 @@ export default function PatientDashboard({
 	  const [medicalHistoryPage, setMedicalHistoryPage] = useState(0)
 	  const [isEditingContact, setIsEditingContact] = useState(false)
 	  const [isSavingContact, setIsSavingContact] = useState(false)
+	  const [isEditingInsurance, setIsEditingInsurance] = useState(false)
+	  const [isSavingInsurance, setIsSavingInsurance] = useState(false)
+	  const [insuranceForm, setInsuranceForm] = useState({
+	    card: initialPatientProfile.MaSoBHYT,
+	    category: initialPatientProfile.KyTuDauBHYT,
+	  })
 	  const [contactForm, setContactForm] = useState({
 	    SDT: initialPatientProfile.SDT,
 	    DiaChi: initialPatientProfile.DiaChi,
@@ -87,15 +94,13 @@ export default function PatientDashboard({
 	    confirmPassword: '',
 	  })
 
-  const bhytCategories = []
-
   const effectiveBranches = (catalogData?.branches || []).filter((branch) => branch.TrangThai !== 'inactive')
   const effectiveServices = (catalogData?.services || []).filter((service) => service.TrangThai !== 'inactive')
   const effectiveStaffList = catalogData?.doctors || []
   const activeDoctorCodes = new Set(effectiveStaffList.map((doctor) => doctor.MaBacSi))
   const effectiveDiseases = catalogData?.diseases?.length ? catalogData.diseases : diseases
   const effectiveMedicines = catalogData?.medicines?.length ? catalogData.medicines : medicines
-  const effectiveBhytCategories = catalogData?.bhyt?.length ? catalogData.bhyt : bhytCategories
+  const effectiveBhytCategories = catalogData?.bhyt || []
   const normalizedCatalogSchedules = (catalogData?.doctorSchedules || [])
     .filter((schedule) => activeDoctorCodes.has(schedule.MaBacSi))
     .map((schedule) => ({
@@ -417,8 +422,9 @@ export default function PatientDashboard({
 	  const getLabTechnicianName = (maXNV) =>
 	    labTechnicians.find((technician) => technician.MaXNV === maXNV)?.HoTen || 'Chưa phân công'
 
-  const getBhytRate = () =>
-    effectiveBhytCategories.find((category) => category.KyTuDauBHYT === patient.KyTuDauBHYT)?.TyLeHuong || 0
+  const getBhytRate = () => patient.BHYTVerified
+    ? effectiveBhytCategories.find((category) => category.KyTuDauBHYT === patient.KyTuDauBHYT)?.TyLeHuong || 0
+    : 0
 
   const formatMoney = (value) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value)
@@ -657,7 +663,7 @@ export default function PatientDashboard({
     }
   }
 
-  useEffect(() => {
+  const onSyncBookingForm = useEffectEvent(() => {
     if (!effectiveBranches.length || !clinicalServices.length) return
 
     setBookingForm((current) => {
@@ -709,13 +715,21 @@ export default function PatientDashboard({
       const hasChanged = Object.keys(next).some((key) => next[key] !== current[key])
       return hasChanged ? next : current
     })
+  })
+  useEffect(() => {
+    const timer = window.setTimeout(() => onSyncBookingForm(), 0)
+    return () => window.clearTimeout(timer)
   }, [catalogData, bookingMethod])
 
+  const onLoadPatientData = useEffectEvent(() => {
+    void loadPatientAppointments()
+    void loadPatientInvoices()
+    void loadMedicalHistory()
+    void loadPatientNotifications()
+  })
   useEffect(() => {
-    loadPatientAppointments()
-    loadPatientInvoices()
-    loadMedicalHistory()
-    loadPatientNotifications()
+    const timer = window.setTimeout(() => onLoadPatientData(), 0)
+    return () => window.clearTimeout(timer)
   }, [patient.MaBenhAn, identityAccessToken])
 
   const bookingAvailableShifts = getAvailableShifts(bookingForm)
@@ -873,6 +887,61 @@ export default function PatientDashboard({
         setIsSavingContact(false)
       }
 	  }
+
+  const handleStartEditInsurance = () => {
+    setInsuranceForm({ card: patient.MaSoBHYT, category: patient.KyTuDauBHYT })
+    setIsEditingInsurance(true)
+  }
+
+  const applyInsuranceProfile = (profile) => {
+    const changes = {
+      MaSoBHYT: profile.insurance_card_number || '',
+      KyTuDauBHYT: profile.insurance_category_code || '',
+      BHYTVerified: Boolean(profile.insurance_verified),
+    }
+    setPatient((current) => ({ ...current, ...changes }))
+    onUpdateUser?.(changes)
+  }
+
+  const handleRefreshInsurance = async () => {
+    if (!identityAccessToken) return
+    setIsSavingInsurance(true)
+    try {
+      applyInsuranceProfile(await getPatientProfile(identityAccessToken))
+      showNotification?.('Đã làm mới trạng thái BHYT từ Registry.')
+    } catch (error) {
+      showNotification?.(error instanceof Error ? error.message : 'Không thể làm mới BHYT.', 'error')
+    } finally {
+      setIsSavingInsurance(false)
+    }
+  }
+
+  const handleSaveInsurance = async () => {
+    const card = insuranceForm.card.trim().toUpperCase()
+    const category = insuranceForm.category
+    if ((card && !category) || (!card && category) || (card && !/^[A-Z0-9]{4,20}$/.test(card))) {
+      showNotification?.('Nhập đủ mã thẻ hợp lệ và nhóm BHYT, hoặc để trống cả hai để bỏ thẻ.', 'error')
+      return
+    }
+    if (!identityAccessToken) {
+      showNotification?.('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'error')
+      return
+    }
+    setIsSavingInsurance(true)
+    try {
+      const updated = await updatePatientProfile(identityAccessToken, {
+        insurance_card_number: card || null,
+        insurance_category_code: category || null,
+      })
+      applyInsuranceProfile(updated)
+      setIsEditingInsurance(false)
+      showNotification?.(card ? 'Đã lưu BHYT tại Registry; chờ admin xác minh trước khi áp dụng mức hưởng.' : 'Đã bỏ thông tin BHYT.')
+    } catch (error) {
+      showNotification?.(error instanceof Error ? error.message : 'Không thể lưu thông tin BHYT.', 'error')
+    } finally {
+      setIsSavingInsurance(false)
+    }
+  }
 
 	  const handlePasswordFormChange = (field, value) => {
 	    setPasswordForm((current) => ({
@@ -1063,7 +1132,7 @@ export default function PatientDashboard({
     })
   }
 
-  const confirmMockPayment = async () => {
+  const confirmBookingAction = async () => {
     if (!paymentModal) return
 
 	    if (paymentModal.type === 'new-booking') {
@@ -1095,7 +1164,7 @@ export default function PatientDashboard({
         await loadPatientAppointments()
         setPaymentModal(null)
         showNotification?.(invoiceCreated
-          ? 'Đã đặt lịch và tạo hóa đơn chờ thanh toán giả lập.'
+          ? 'Đã đặt lịch và tạo hóa đơn chờ thanh toán.'
           : 'Đã đặt lịch nhưng chưa tạo được hóa đơn. Mở “Lịch hẹn của tôi” để thử lại.',
         invoiceCreated ? 'success' : 'error')
       } catch (error) {
@@ -1164,7 +1233,7 @@ export default function PatientDashboard({
 	        await loadMedicalHistory()
 	        setActiveTreatmentId('')
 	        setPaymentModal(null)
-	        showNotification?.('Đã đặt buổi điều trị và tạo hóa đơn chờ thanh toán. Vào Lịch hẹn của tôi để thanh toán giả lập.')
+	        showNotification?.('Đã đặt buổi điều trị và tạo hóa đơn chờ thanh toán. Vào Lịch hẹn của tôi để ghi nhận thanh toán.')
 	      } catch (error) {
 	        const message = error instanceof Error ? error.message : 'Không thể đặt lịch điều trị.'
 	        showNotification?.(message, 'error')
@@ -1197,16 +1266,16 @@ export default function PatientDashboard({
       const existing = invoicesByAppointment[booking.MaLichHen]
       if (!existing) {
         await ensureInvoice(booking.MaLichHen)
-        showNotification?.('Đã tạo hóa đơn chờ thanh toán giả lập.')
+        showNotification?.('Đã tạo hóa đơn chờ thanh toán.')
         return
       }
       const invoice = existing
-      if (invoice.status === 'pending' && window.confirm('Ghi nhận thanh toán giả lập? Đây không phải giao dịch ngân hàng.')) {
+      if (invoice.status === 'pending' && window.confirm('Ghi nhận hóa đơn đã thanh toán? Thao tác này chỉ cập nhật trạng thái trong hệ thống, không thực hiện giao dịch ngân hàng.')) {
         const response = await simulatePatientPayment(identityAccessToken, invoice.id)
         const result = await response.json()
-        if (!response.ok) throw new Error(typeof result?.detail === 'string' ? result.detail : 'Không thể ghi nhận thanh toán giả lập.')
+        if (!response.ok) throw new Error(typeof result?.detail === 'string' ? result.detail : 'Không thể ghi nhận thanh toán.')
         setInvoicesByAppointment((current) => ({ ...current, [booking.MaLichHen]: result }))
-        showNotification?.('Đã ghi nhận thanh toán giả lập trên Billing service.')
+        showNotification?.('Đã ghi nhận thanh toán.')
       }
     } catch (error) {
       showNotification?.(error instanceof Error ? error.message : 'Không thể xử lý hóa đơn.', 'error')
@@ -1223,8 +1292,8 @@ export default function PatientDashboard({
         <div className="payment-modal">
           <div className="payment-modal-header">
             <div>
-              <span>{paymentModal.type === 'new-booking' ? 'Appointment service' : 'Cổng thanh toán QR'}</span>
-              <h2>{paymentModal.type === 'new-booking' ? 'Xác nhận đặt lịch' : 'Xác nhận thanh toán'}</h2>
+              <span>{paymentModal.type === 'new-booking' ? 'Lịch khám' : 'Lịch điều trị'}</span>
+              <h2>{paymentModal.type === 'new-booking' ? 'Xác nhận đặt lịch' : 'Xác nhận đặt buổi điều trị'}</h2>
             </div>
             <button type="button" onClick={() => setPaymentModal(null)} disabled={isConfirmingPayment}>
               Đóng
@@ -1260,20 +1329,16 @@ export default function PatientDashboard({
             </div>
           </div>
 
-          {paymentModal.type !== 'new-booking' && <div className="qr-box">
-            <div className="qr-grid" />
-            <span>QR chuyển khoản giả lập</span>
-          </div>}
-
           {paymentModal.type === 'new-booking' && <p>Còn {paymentModal.availability} chỗ tại thời điểm kiểm tra. Thao tác này chỉ xác nhận lịch hẹn; chưa thu hoặc xác nhận thanh toán.</p>}
+          {paymentModal.type === 'treatment-booking' && <p>Thao tác này tạo lịch điều trị và hóa đơn chờ thanh toán; chưa thu hoặc xác nhận thanh toán.</p>}
 
           <button
             type="button"
             className="payment-confirm-button"
-            onClick={confirmMockPayment}
+            onClick={confirmBookingAction}
             disabled={isConfirmingPayment}
           >
-            {isConfirmingPayment ? 'Đang xử lý...' : paymentModal.type === 'new-booking' ? 'Xác nhận đặt lịch' : 'Bấm vào đây để giả lập đã chuyển khoản thành công'}
+            {isConfirmingPayment ? 'Đang xử lý...' : paymentModal.type === 'new-booking' ? 'Xác nhận đặt lịch' : 'Xác nhận đặt buổi điều trị'}
           </button>
         </div>
       </div>
@@ -1579,6 +1644,9 @@ export default function PatientDashboard({
 	  const renderMyBookings = () => (
 	    <div className="patient-card">
 	      <h2>Lịch hẹn của tôi</h2>
+	      <button type="button" className="patient-secondary-button" onClick={() => { void loadPatientAppointments(); void loadPatientInvoices() }}>
+	        Làm mới lịch và hóa đơn
+	      </button>
 	      <div className="patient-appointment-toolbar">
 	        <input
 	          type="search"
@@ -1616,14 +1684,17 @@ export default function PatientDashboard({
 	                <td>Ca {booking.CaKham}</td>
 	                <td>{booking.TrangThai}</td>
                 <td>{invoicesByAppointment[booking.MaLichHen]?.status === 'paid'
-                  ? `Giả lập đã trả (${invoicesByAppointment[booking.MaLichHen].payment_token})`
-                  : invoicesByAppointment[booking.MaLichHen]?.status === 'pending' ? 'Chờ thanh toán giả lập' : 'Chưa có hóa đơn'}</td>
+                  ? 'Đã thanh toán'
+                  : invoicesByAppointment[booking.MaLichHen]?.status === 'refunded' ? 'Đã hoàn tiền'
+                    : invoicesByAppointment[booking.MaLichHen]?.status === 'pending' ? 'Chờ thanh toán' : 'Chưa có hóa đơn'}</td>
                 <td>
                   {booking.apiStatus === 'confirmed' && booking.NgayKham >= getTodayDateKey() && invoicesByAppointment[booking.MaLichHen]?.status !== 'paid' && (
                     <>
-                      <button type="button" className="patient-secondary-button" onClick={() => handleBillingAction(booking)} disabled={billingBusyId === booking.MaLichHen}>
-                        {invoicesByAppointment[booking.MaLichHen] ? 'Thanh toán giả lập' : 'Tạo hóa đơn'}
-                      </button>
+                      {invoicesByAppointment[booking.MaLichHen]?.status !== 'refunded' && (
+                        <button type="button" className="patient-secondary-button" onClick={() => handleBillingAction(booking)} disabled={billingBusyId === booking.MaLichHen}>
+                          {invoicesByAppointment[booking.MaLichHen] ? 'Ghi nhận thanh toán' : 'Tạo hóa đơn'}
+                        </button>
+                      )}
                       <button type="button" className="patient-secondary-button" onClick={() => cancelBooking(booking)}>Hủy lịch</button>
                     </>
                   )}
@@ -2011,6 +2082,25 @@ export default function PatientDashboard({
 	            >
 	              Đổi mật khẩu
 	            </button>
+	            {!isEditingInsurance ? (
+	              <>
+	                <button type="button" className="patient-secondary-button" onClick={handleStartEditInsurance}>
+	                  Cập nhật BHYT
+	                </button>
+	                <button type="button" className="patient-plain-button" onClick={handleRefreshInsurance} disabled={isSavingInsurance}>
+	                  Làm mới BHYT
+	                </button>
+	              </>
+	            ) : (
+	              <>
+	                <button type="button" className="patient-primary-button" onClick={handleSaveInsurance} disabled={isSavingInsurance}>
+	                  {isSavingInsurance ? 'Đang lưu...' : 'Lưu BHYT'}
+	                </button>
+	                <button type="button" className="patient-plain-button" onClick={() => setIsEditingInsurance(false)}>
+	                  Hủy
+	                </button>
+	              </>
+	            )}
 	          </div>
 	        </div>
 
@@ -2029,11 +2119,26 @@ export default function PatientDashboard({
 	          </label>
 	          <label>
 	            Mã số BHYT
-	            <input type="text" value={patient.MaSoBHYT || 'Không sử dụng'} disabled />
+	            <input type="text" value={isEditingInsurance ? insuranceForm.card : patient.MaSoBHYT}
+	              placeholder="Không sử dụng" disabled={!isEditingInsurance} maxLength={20}
+	              onChange={(event) => setInsuranceForm((current) => ({ ...current, card: event.target.value }))} />
+	          </label>
+	          <label>
+	            Nhóm BHYT
+	            <select value={isEditingInsurance ? insuranceForm.category : patient.KyTuDauBHYT}
+	              disabled={!isEditingInsurance}
+	              onChange={(event) => setInsuranceForm((current) => ({ ...current, category: event.target.value }))}>
+	              <option value="">Không sử dụng</option>
+	              {effectiveBhytCategories.map((category) => (
+	                <option key={category.KyTuDauBHYT} value={category.KyTuDauBHYT}>
+	                  {category.KyTuDauBHYT} · {category.DoiTuongChinhSach}
+	                </option>
+	              ))}
+	            </select>
 	          </label>
 	          <label>
 	            Mức hưởng BHYT
-	            <input type="text" value={`${Math.round(getBhytRate() * 100)}%`} disabled />
+	            <input type="text" value={patient.BHYTVerified ? `${Math.round(getBhytRate() * 100)}% · Đã xác minh` : 'Chưa xác minh · 0%'} disabled />
 	          </label>
 	          <label>
 	            Số điện thoại

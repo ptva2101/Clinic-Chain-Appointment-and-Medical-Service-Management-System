@@ -2,10 +2,10 @@
 
 import hmac
 import os
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -37,6 +37,20 @@ class InvoiceResponse(BaseModel):
     paid_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    branch_code: str | None = None
+    doctor_code: str | None = None
+    insurance_card_number: str | None = None
+    insurance_category_code: str | None = None
+    insurance_verified: bool = False
+    coverage_bps: int = 0
+    refunded_at: datetime | None = None
+    source: str = "live"
+    legacy_date: date | None = None
+
+
+class InvoicePage(BaseModel):
+    items: list[InvoiceResponse]
+    total: int
 
 
 class MonthlyReport(BaseModel):
@@ -44,7 +58,36 @@ class MonthlyReport(BaseModel):
     paid_count: int
     pending_count: int
     revenue: int
+    insurance_discount: int = 0
+    legacy_estimated_count: int = 0
+    legacy_lab_count: int = 0
+    refunded_count: int = 0
+    refunded_amount: int = 0
     payment_method: Literal["simulated"] = "simulated"
+
+
+class GroupedReportItem(BaseModel):
+    code: str | None
+    paid_count: int
+    revenue: int
+    insurance_discount: int = 0
+    legacy_estimated_count: int = 0
+    legacy_lab_count: int = 0
+
+
+class LegacyLabCharge(BaseModel):
+    id: str
+    lab_order_id: str
+    appointment_id: str
+    patient_id: str
+    branch_code: str
+    doctor_code: str
+    service_code: str
+    list_price: int
+    insurance_discount: int
+    amount_due: int
+    legacy_date: date
+    source: Literal["legacy_mysql"]
 
 
 def response(row: dict) -> InvoiceResponse:
@@ -55,8 +98,8 @@ def get_repository(request: Request) -> InvoiceRepository:
     return InvoiceRepository(request.app.state.database)
 
 
-def get_identity_client() -> IdentityClient:
-    return IdentityClient()
+def get_identity_client(request: Request) -> IdentityClient:
+    return request.app.state.identity_client
 
 
 def get_clients() -> BillingClients:
@@ -112,7 +155,8 @@ async def create_invoice(
         if appointment.get("status") != "confirmed":
             raise HTTPException(status_code=409, detail="Only confirmed appointments can be invoiced")
         price = await clients.service_price(appointment["service_code"])
-        row = await repository.create(appointment, account, price)
+        insurance = await clients.patient_insurance(appointment["patient_id"])
+        row = await repository.create(appointment, account, price, insurance)
     except (InvalidAppointment, InvalidService) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except UpstreamUnavailable as exc:
@@ -126,6 +170,18 @@ async def create_invoice(
 async def my_invoices(repository: Repository, account: Account) -> list[InvoiceResponse]:
     require_patient(account)
     return [response(row) for row in await repository.list_patient(account["id"])]
+
+
+@router.get("/invoices", response_model=InvoicePage)
+async def admin_invoices(
+    repository: Repository, account: Account,
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> InvoicePage:
+    if account.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required")
+    rows, total = await repository.list_admin(limit, offset)
+    return InvoicePage(items=[response(row) for row in rows], total=total)
 
 
 @router.post("/invoices/{invoice_id}/simulate-payment", response_model=InvoiceResponse)
@@ -169,6 +225,44 @@ async def monthly_report(month: str, repository: Repository, account: Account) -
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="month must be YYYY-MM") from exc
     return MonthlyReport.model_validate(await repository.monthly_report(year, month_number))
+
+
+@router.get("/reports/{group_by}", response_model=list[GroupedReportItem])
+async def grouped_report(group_by: Literal["branch", "doctor", "service"], month: str,
+                         repository: Repository, account: Account) -> list[GroupedReportItem]:
+    if account.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required")
+    try:
+        parsed = datetime.strptime(month, "%Y-%m")
+        if parsed.strftime("%Y-%m") != month:
+            raise ValueError("Invalid month")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="month must be YYYY-MM") from exc
+    return [GroupedReportItem.model_validate(row)
+            for row in await repository.grouped_report(parsed.year, parsed.month, group_by)]
+
+
+@router.get("/legacy-lab-charges", response_model=list[LegacyLabCharge])
+async def legacy_lab_charges(repository: Repository, account: Account,
+                             limit: Annotated[int, Query(ge=1, le=100)] = 20,
+                             offset: Annotated[int, Query(ge=0)] = 0) -> list[LegacyLabCharge]:
+    if account.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required")
+    return [LegacyLabCharge.model_validate(row)
+            for row in await repository.list_legacy_lab_charges(limit, offset)]
+
+
+@router.post("/invoices/{invoice_id}/simulate-refund", response_model=InvoiceResponse)
+async def simulate_refund(invoice_id: str, repository: Repository, account: Account) -> InvoiceResponse:
+    if account.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required")
+    try:
+        row = await repository.simulate_refund(invoice_id)
+    except InvoiceConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return response(row)
 
 
 @router.get("/internal/appointments/{appointment_id}/payment", response_model=InvoiceResponse)

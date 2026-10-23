@@ -51,6 +51,24 @@ class AppointmentRepository:
                 await connection.rollback()
                 return row
 
+    async def list_stale(self, after_id: str, min_age_seconds: int,
+                         limit: int) -> list[dict]:
+        """Page live sagas by id so one unavailable dependency cannot starve others."""
+        pool = await self.database.pool()
+        async with pool.acquire() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    f"SELECT {COLUMNS} FROM appointments "
+                    "WHERE source = 'live' AND hold_id IS NOT NULL "
+                    "AND status IN ('pending', 'cancel_pending') "
+                    "AND updated_at <= DATE_SUB(UTC_TIMESTAMP(6), INTERVAL %s SECOND) "
+                    "AND id > %s ORDER BY id LIMIT %s",
+                    (min_age_seconds, after_id, limit),
+                )
+                rows = await cursor.fetchall()
+                await connection.rollback()
+                return rows
+
     async def list(self, patient_id: str | None = None, doctor_code: str | None = None,
                    from_date: date | None = None, to_date: date | None = None,
                    status: str | None = None) -> list[dict]:
@@ -158,6 +176,13 @@ class AppointmentRepository:
                         return row
                     if row["status"] not in expected:
                         raise AppointmentConflict(f"Cannot move appointment from {row['status']} to {next_status}")
+                    if next_status == "cancel_pending":
+                        await cursor.execute(
+                            "SELECT 1 FROM appointment_checkins WHERE appointment_id = %s LIMIT 1",
+                            (appointment_id,),
+                        )
+                        if await cursor.fetchone():
+                            raise AppointmentConflict("Checked-in appointment cannot be cancelled")
                     await cursor.execute(
                         "UPDATE appointments SET status = %s WHERE id = %s",
                         (next_status, appointment_id),

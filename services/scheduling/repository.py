@@ -27,6 +27,29 @@ class SchedulingRepository:
                 await connection.rollback()
                 return row
 
+    async def schedule_impact(self, schedule_id: int) -> dict | None:
+        """Read-only preflight; change_schedule repeats the guard under a row lock."""
+        row = await self.get_schedule(schedule_id)
+        if row is None:
+            return None
+        pool = await self.database.pool()
+        async with pool.acquire() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    "SELECT COALESCE(SUM(state = 'confirmed'), 0) AS confirmed_appointments, "
+                    "COALESCE(SUM(state = 'held' AND expires_at > UTC_TIMESTAMP(6)), 0) AS active_holds "
+                    "FROM slot_holds WHERE doctor_code = %s AND branch_code = %s "
+                    "AND duty_date = %s AND shift = %s",
+                    (row["doctor_code"], row["branch_code"], row["duty_date"], row["shift"]),
+                )
+                counts = await cursor.fetchone()
+                await connection.rollback()
+        confirmed = int(counts["confirmed_appointments"])
+        held = int(counts["active_holds"])
+        return {"schedule_id": schedule_id, "status": row["status"],
+                "confirmed_appointments": confirmed, "active_holds": held,
+                "can_change": row["status"] == "active" and confirmed == 0 and held == 0}
+
     async def change_schedule(self, schedule_id: int, new_doctor_code: str | None = None) -> dict:
         """Only unbooked shifts can change; a hold locks the schedule row first."""
         pool = await self.database.pool()
@@ -78,19 +101,28 @@ class SchedulingRepository:
         where = []
         params = []
         if from_date:
-            where.append("duty_date >= %s")
+            where.append("s.duty_date >= %s")
             params.append(from_date)
         if to_date:
-            where.append("duty_date <= %s")
+            where.append("s.duty_date <= %s")
             params.append(to_date)
         if doctor_code:
-            where.append("doctor_code = %s")
+            where.append("s.doctor_code = %s")
             params.append(doctor_code)
-        sql = ("SELECT id, doctor_code, branch_code, duty_date, shift, status "
-               "FROM doctor_schedules")
+        sql = (
+            "SELECT s.id, s.doctor_code, s.branch_code, s.duty_date, s.shift, s.status, "
+            "(SELECT COUNT(*) FROM slot_holds h WHERE h.doctor_code = s.doctor_code "
+            "AND h.branch_code = s.branch_code AND h.duty_date = s.duty_date "
+            "AND h.shift = s.shift AND h.state = 'confirmed') AS confirmed_appointments, "
+            "(SELECT COUNT(*) FROM slot_holds h WHERE h.doctor_code = s.doctor_code "
+            "AND h.branch_code = s.branch_code AND h.duty_date = s.duty_date "
+            "AND h.shift = s.shift AND h.state = 'held' "
+            "AND h.expires_at > UTC_TIMESTAMP(6)) AS active_holds "
+            "FROM doctor_schedules s"
+        )
         if where:
             sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY duty_date, shift, branch_code, doctor_code"
+        sql += " ORDER BY s.duty_date, s.shift, s.branch_code, s.doctor_code"
         pool = await self.database.pool()
         async with pool.acquire() as connection:
             async with connection.cursor() as cursor:

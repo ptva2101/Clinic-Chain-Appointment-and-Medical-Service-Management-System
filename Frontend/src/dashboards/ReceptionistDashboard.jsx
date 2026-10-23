@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { LogOut } from 'lucide-react'
 import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
 import { getTodayDateKey } from '../shared/dates.js'
@@ -29,9 +29,6 @@ export default function ReceptionistDashboard({ user, identityAccessToken, onLog
     setFeedback(message)
     showNotification?.(message, type)
   }
-  const [branches] = useState([])
-  const [services] = useState([])
-  const [staffList] = useState([])
   const [patients] = useState([])
   const [bookings, setBookings] = useState([])
 
@@ -72,7 +69,7 @@ export default function ReceptionistDashboard({ user, identityAccessToken, onLog
     return Object.values(doctorMap)
   }, [catalogData?.doctorSchedules, maChiNhanh, TODAY])
 
-  const normalizeReceptionBooking = (appointment) => ({
+  const normalizeReceptionBooking = useCallback((appointment) => ({
     MaLichHen: appointment.MaLichHen,
     MaBenhAn: appointment.MaBenhAn || '',
     MaCauHinh: appointment.MaCauHinh || '',
@@ -96,7 +93,7 @@ export default function ReceptionistDashboard({ user, identityAccessToken, onLog
       CCCD: appointment.CCCD || '',
       SDT: appointment.SDT || appointment.SDTBenhNhan || 'Chưa cập nhật',
     },
-  })
+  }), [maChiNhanh, TODAY])
 
   const loadCheckinAppointments = async () => {
     if (!maChiNhanh) return
@@ -162,22 +159,28 @@ export default function ReceptionistDashboard({ user, identityAccessToken, onLog
     }
   }
 
+  const onLoadCheckinAppointments = useEffectEvent(() => { void loadCheckinAppointments() })
   useEffect(() => {
-    loadCheckinAppointments()
-  }, [maChiNhanh, TODAY])
+    const timer = window.setTimeout(() => onLoadCheckinAppointments(), 0)
+    return () => window.clearTimeout(timer)
+  }, [maChiNhanh, TODAY, identityAccessToken])
 
+  const onLoadDoctorQueues = useEffectEvent(() => { void loadDoctorQueues() })
   useEffect(() => {
-    loadDoctorQueues()
-  }, [maChiNhanh, branchDoctorsToday, TODAY])
+    const timer = window.setTimeout(() => onLoadDoctorQueues(), 0)
+    return () => window.clearTimeout(timer)
+  }, [maChiNhanh, branchDoctorsToday, TODAY, identityAccessToken])
 
   useEffect(() => {
     const keyword = searchTerm.trim()
 
     if (keyword.length < 2) {
-      setSearchRows([])
-      setSearchError('')
-      setSearchLoading(false)
-      return undefined
+      const timer = window.setTimeout(() => {
+        setSearchRows([])
+        setSearchError('')
+        setSearchLoading(false)
+      }, 0)
+      return () => window.clearTimeout(timer)
     }
 
     const timeoutId = window.setTimeout(async () => {
@@ -207,7 +210,7 @@ export default function ReceptionistDashboard({ user, identityAccessToken, onLog
     }, 350)
 
     return () => window.clearTimeout(timeoutId)
-  }, [searchTerm, maChiNhanh, TODAY])
+  }, [searchTerm, maChiNhanh, TODAY, identityAccessToken, normalizeReceptionBooking])
 
   const matchedPatient = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase()

@@ -13,6 +13,7 @@ env/
 !Backend/.env.example
 services/identity/legacy-import.env
 data/mysql/*.sql.gz
+clinic-*.sql
 
 # Backend local runtime
 Backend/venv/

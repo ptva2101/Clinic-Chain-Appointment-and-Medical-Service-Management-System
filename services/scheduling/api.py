@@ -52,6 +52,16 @@ class ScheduleResponse(BaseModel):
     NgayTruc: date
     CaTruc: int
     TrangThai: str
+    confirmed_appointments: int = 0
+    active_holds: int = 0
+
+
+class ScheduleImpact(BaseModel):
+    schedule_id: int
+    status: str
+    confirmed_appointments: int
+    active_holds: int
+    can_change: bool
 
 
 class TransferScheduleRequest(BaseModel):
@@ -64,7 +74,10 @@ def to_response(row: dict) -> ScheduleResponse:
         id=row["id"], MaLichTruc=f"LT_{row['id']:06d}",
         MaBacSi=row["doctor_code"], MaChiNhanh=row["branch_code"],
         NgayTruc=row["duty_date"], CaTruc=row["shift"],
-        TrangThai="Đang hoạt động" if row["status"] == "active" else "Đã hủy",
+        TrangThai=("Đang hoạt động" if row["status"] == "active" else
+                   "Lịch sử" if row["status"] == "historical" else "Đã hủy"),
+        confirmed_appointments=int(row.get("confirmed_appointments", 0)),
+        active_holds=int(row.get("active_holds", 0)),
     )
 
 
@@ -72,8 +85,8 @@ def get_repository(request: Request) -> SchedulingRepository:
     return SchedulingRepository(request.app.state.database)
 
 
-def get_identity_client() -> IdentityClient:
-    return IdentityClient()
+def get_identity_client(request: Request) -> IdentityClient:
+    return request.app.state.identity_client
 
 
 def get_registry_client() -> RegistryClient:
@@ -152,6 +165,16 @@ async def create_doctor_schedules(
     except ScheduleConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return [to_response(row) for row in rows]
+
+
+@router.get("/doctor-schedules/{schedule_id}/impact", response_model=ScheduleImpact)
+async def doctor_schedule_impact(
+    schedule_id: int, repository: Repository, token: AdminToken,
+) -> ScheduleImpact:
+    impact = await repository.schedule_impact(schedule_id)
+    if impact is None:
+        raise HTTPException(status_code=404, detail="Doctor schedule not found")
+    return ScheduleImpact(**impact)
 
 
 @router.post("/doctor-schedules/{schedule_id}/cancel", response_model=ScheduleResponse)

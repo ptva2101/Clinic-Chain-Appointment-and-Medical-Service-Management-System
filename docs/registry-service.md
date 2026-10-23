@@ -58,4 +58,4 @@ docker run --rm --network $network -e REGISTRY_PATIENT_ACCESS_TOKEN -v "${PWD}/s
 Remove-Item Env:REGISTRY_PATIENT_ACCESS_TOKEN
 ```
 
-Không dùng tài khoản thật hoặc chạy test tải trên môi trường production. Lần này chưa đo k6 do chưa có tài khoản bệnh nhân test dành riêng; các API được kiểm tra bằng test tự động và smoke test quyền truy cập.
+Không dùng tài khoản thật hoặc chạy test tải trên môi trường production. Bài đo mới trên stack và tài khoản tổng hợp đã đọc API Registry cùng sáu service còn lại; xem [kết quả và các ngưỡng chưa đạt](qos.md). Lệnh phía trên chỉ dành cho tài khoản test riêng, không dùng bản dump chia sẻ.

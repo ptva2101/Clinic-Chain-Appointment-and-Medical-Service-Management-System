@@ -38,20 +38,21 @@ CREATE TABLE IF NOT EXISTS treatment_sessions (
     plan_id CHAR(36) NOT NULL,
     session_number SMALLINT UNSIGNED NOT NULL,
     patient_request_key VARCHAR(128) COLLATE utf8mb4_bin NOT NULL,
-    config_code VARCHAR(96) NOT NULL,
+    config_code VARCHAR(96) NULL,
     doctor_code VARCHAR(128) NOT NULL,
-    duty_date DATE NOT NULL,
-    shift TINYINT UNSIGNED NOT NULL,
+    duty_date DATE NULL,
+    shift TINYINT UNSIGNED NULL,
     appointment_id CHAR(36) NULL,
     invoice_id CHAR(36) NULL,
     status VARCHAR(24) NOT NULL DEFAULT 'pending',
+    source VARCHAR(32) NOT NULL DEFAULT 'live',
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     UNIQUE KEY uq_session_number (plan_id, session_number),
     UNIQUE KEY uq_plan_request (plan_id, patient_request_key),
     UNIQUE KEY uq_treatment_appointment (appointment_id),
     CONSTRAINT fk_session_plan FOREIGN KEY (plan_id) REFERENCES treatment_plans(id),
-    CONSTRAINT ck_session_status CHECK (status IN ('pending', 'booked', 'completed'))
+    CONSTRAINT ck_session_status CHECK (status IN ('pending', 'booked', 'completed', 'historical_unbooked'))
 );
 
 CREATE TABLE IF NOT EXISTS disease_catalog (

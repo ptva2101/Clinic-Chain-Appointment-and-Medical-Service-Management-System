@@ -13,6 +13,7 @@ import pytest
 
 from common.database import MySQLDatabase
 from scheduling.migrate import migrate
+from scheduling.repository import ScheduleConflict, SchedulingRepository
 from scheduling.slot_repository import HoldConflict, SlotRepository, SlotUnavailable
 from scheduling.slots import HoldCreate
 
@@ -32,6 +33,7 @@ def test_concurrent_holds_only_take_one_slot(monkeypatch):
         await migrate()
         database = MySQLDatabase()
         store = SlotRepository(database)
+        schedules = SchedulingRepository(database)
         suffix = uuid4().hex[:12].upper()
         config_code = f"TEST_{suffix}"
         doctor_code = f"BS_{suffix}"
@@ -47,6 +49,7 @@ def test_concurrent_holds_only_take_one_slot(monkeypatch):
                         "(doctor_code, branch_code, duty_date, shift) VALUES (%s, %s, %s, 1)",
                         (doctor_code, "TEST_BRANCH", day),
                     )
+                    schedule_id = cursor.lastrowid
                 await connection.commit()
 
             async def reserve(index):
@@ -99,6 +102,12 @@ def test_concurrent_holds_only_take_one_slot(monkeypatch):
                 hold["id"], "confirm", appointment_id=f"AP_{suffix}"
             )
             assert confirmed["state"] == "confirmed"
+            impact = await schedules.schedule_impact(schedule_id)
+            assert impact["confirmed_appointments"] == 1
+            assert impact["can_change"] is False
+            assert (await schedules.list_schedules(day, day, doctor_code))[0]["confirmed_appointments"] == 1
+            with pytest.raises(ScheduleConflict):
+                await schedules.change_schedule(schedule_id)
             assert (await store.transition_hold(hold["id"], "release"))["state"] == "released"
             second = await reserve(21)
             assert second is not None
@@ -110,10 +119,17 @@ def test_concurrent_holds_only_take_one_slot(monkeypatch):
                         (second["id"],),
                     )
                 await connection.commit()
-            assert await reserve(22) is not None
+            final_hold = await reserve(22)
+            assert final_hold is not None
             usage = await store.availability(config_code, "TEST_BRANCH", day, 1)
             assert usage["held"] == 1
             assert usage["confirmed"] == 0
+            assert (await schedules.schedule_impact(schedule_id))["active_holds"] == 1
+            with pytest.raises(ScheduleConflict):
+                await schedules.change_schedule(schedule_id)
+            await store.transition_hold(final_hold["id"], "release")
+            assert (await schedules.schedule_impact(schedule_id))["can_change"] is True
+            assert (await schedules.change_schedule(schedule_id))["status"] == "cancelled"
         finally:
             await database.close()
 

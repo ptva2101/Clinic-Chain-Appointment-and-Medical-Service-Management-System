@@ -213,7 +213,9 @@ class ClinicalRepository:
             async with connection.cursor() as cursor:
                 await cursor.execute(
                     "SELECT p.id, p.encounter_id, p.patient_id, p.doctor_code, p.service_code, "
-                    "p.total_sessions, p.created_at, COUNT(s.id) AS scheduled_sessions, "
+                    "p.total_sessions, p.created_at, "
+                    "SUM(CASE WHEN s.status IN ('pending', 'booked', 'completed') "
+                    "THEN 1 ELSE 0 END) AS scheduled_sessions, "
                     "SUM(CASE WHEN s.status = 'completed' THEN 1 ELSE 0 END) AS completed_sessions "
                     "FROM treatment_plans p LEFT JOIN treatment_sessions s ON s.plan_id = p.id "
                     "WHERE p.patient_id = %s GROUP BY p.id ORDER BY p.created_at DESC LIMIT 500",
@@ -241,7 +243,7 @@ class ClinicalRepository:
             async with connection.cursor() as cursor:
                 await cursor.execute(
                     "SELECT id, plan_id, session_number, config_code, doctor_code, duty_date, shift, "
-                    "appointment_id, invoice_id, status, created_at, updated_at "
+                    "appointment_id, invoice_id, status, source, created_at, updated_at "
                     "FROM treatment_sessions WHERE plan_id = %s ORDER BY session_number", (plan_id,),
                 )
                 rows = await cursor.fetchall()
@@ -254,7 +256,7 @@ class ClinicalRepository:
             async with connection.cursor() as cursor:
                 await cursor.execute(
                     "SELECT id, plan_id, session_number, config_code, doctor_code, duty_date, shift, "
-                    "appointment_id, invoice_id, status, created_at, updated_at "
+                    "appointment_id, invoice_id, status, source, created_at, updated_at "
                     "FROM treatment_sessions WHERE id = %s", (session_id,),
                 )
                 row = await cursor.fetchone()

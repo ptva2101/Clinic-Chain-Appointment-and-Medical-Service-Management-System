@@ -55,7 +55,7 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-Phiên Identity không lưu token trong `localStorage`; tải lại trang sẽ kết thúc phiên giao diện. Khi trang còn mở, refresh token được xoay trong bộ nhớ trước lúc access token hết hạn. `subject_id` của nhân viên là mã hồ sơ đã liên kết ở Registry; tài khoản đang chờ Registry không đăng nhập được và không thể mở khóa trực tiếp. Các màn hình khám bệnh/đặt lịch vẫn dùng backend cũ và **chưa** kiểm tra token Identity, dù frontend đã chuyển đăng nhập nhân viên sang Identity. Bệnh nhân mới chưa dùng được dashboard đặt lịch cũ.
+Phiên Identity không lưu token trong `localStorage`. Frontend giữ refresh token trong `sessionStorage` của tab và xoay token khi F5/đến hạn; không lưu access token hoặc mật khẩu. Đăng xuất/đổi mật khẩu xóa token, đóng tab không khôi phục phiên. Đây là lựa chọn cho demo local; khi triển khai thật nên chuyển sang cookie `HttpOnly`, `Secure`, `SameSite` và bảo vệ CSRF phù hợp. `subject_id` của nhân viên là mã hồ sơ đã liên kết ở Registry; tài khoản đang chờ Registry không đăng nhập được và không thể mở khóa trực tiếp. Các màn đặt lịch/khám gọi microservice với token Identity.
 
 Ví dụ đăng nhập:
 
@@ -65,7 +65,7 @@ $tokens = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8001/api/v1/iden
 Invoke-RestMethod -Uri 'http://127.0.0.1:8001/api/v1/identity/me' -Headers @{ Authorization = "Bearer $($tokens.access_token)" }
 ```
 
-`logout` chỉ thu hồi refresh token; access token đã cấp có thể tồn tại thêm tối đa 15 phút. Dùng `logout-all` hoặc đổi mật khẩu để vô hiệu hóa access token ngay **tại Identity**. Các service khác chưa triển khai kiểm tra `token_version`/trạng thái tài khoản, vì vậy chưa thể đảm bảo thu hồi token tức thì ở toàn hệ thống. Không lưu token dài hạn trong `localStorage` khi tích hợp frontend.
+`logout` chỉ thu hồi refresh token; access token đã cấp có thể tồn tại thêm tối đa 15 phút. Dùng `logout-all` hoặc đổi mật khẩu để vô hiệu hóa access token ngay **tại Identity**. Các service nghiệp vụ gọi Identity để kiểm tra trạng thái tài khoản khi nhận token. Không lưu token dài hạn trong `localStorage` khi tích hợp frontend.
 
 ## Tạo lại dữ liệu Identity local
 

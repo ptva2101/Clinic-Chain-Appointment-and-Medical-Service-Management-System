@@ -60,3 +60,40 @@ class BillingClients:
             return price
         except (ValueError, TypeError, KeyError) as exc:
             raise UpstreamUnavailable("Registry service returned invalid prices") from exc
+
+    async def patient_insurance(self, patient_id: str) -> dict:
+        base = os.getenv("REGISTRY_INTERNAL_URL", "http://registry:8000").rstrip("/")
+        token = os.getenv("REGISTRY_INTERNAL_TOKEN", "")
+        if not token:
+            raise UpstreamUnavailable("Registry service credential is missing")
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                result = await client.get(
+                    f"{base}/api/v1/registry/internal/patients/{patient_id}/insurance",
+                    headers={"X-Service-Token": token},
+                )
+        except httpx.RequestError as exc:
+            raise UpstreamUnavailable("Registry service is unavailable") from exc
+        if result.status_code != 200:
+            raise UpstreamUnavailable("Registry service could not provide patient insurance")
+        try:
+            value = result.json()
+            if value["patient_id"] != patient_id:
+                raise ValueError("Patient mismatch")
+            bps = value.get("coverage_bps")
+            if bps is not None and (type(bps) is not int or not 0 <= bps <= 10000):
+                raise ValueError("Invalid coverage")
+            verified = value.get("insurance_verified")
+            if type(verified) is not bool:
+                raise ValueError("Invalid verification state")
+            if bool(value.get("insurance_card_number")) != bool(value.get("insurance_category_code")):
+                raise ValueError("Incomplete insurance")
+            if value.get("insurance_category_code") and bps is None:
+                raise ValueError("Unknown insurance category")
+            if verified and not value.get("insurance_card_number"):
+                raise ValueError("Verified insurance has no card")
+            if not verified and bps not in (None, 0):
+                raise ValueError("Unverified insurance cannot have coverage")
+            return value
+        except (ValueError, TypeError, KeyError) as exc:
+            raise UpstreamUnavailable("Registry service returned invalid insurance") from exc

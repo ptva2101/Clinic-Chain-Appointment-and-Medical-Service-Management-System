@@ -1,0 +1,21 @@
+# Disposable end-to-end stack: run with -p clinic-e2e, never against the shared dump.
+services:
+  mysql:
+    ports: !override []
+  identity:
+    ports: !override []
+    environment:
+      IDENTITY_ADMIN_PASSWORD: e2e_only_change_me_123
+      IDENTITY_JWT_SECRET: e2e_only_signing_secret_replace_for_any_shared_use
+  registry:
+    ports: !override []
+  scheduling:
+    ports: !override []
+  appointment:
+    ports: !override []
+  billing:
+    ports: !override []
+  clinical:
+    ports: !override []
+  laboratory:
+    ports: !override []

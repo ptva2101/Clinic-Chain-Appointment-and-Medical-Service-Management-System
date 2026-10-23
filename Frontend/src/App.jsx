@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { Lock, UserRound } from 'lucide-react'
 import medicalLogoImage from './assets/medical-logo-cutout.png'
 import medicalTeamImage from './assets/medical-team-cutout.png'
@@ -10,7 +10,7 @@ import DoctorDashboard from './dashboards/DoctorDashboard.jsx'
 import ReceptionistDashboard from './dashboards/ReceptionistDashboard.jsx'
 import TechnicianDashboard from './dashboards/TechnicianDashboard.jsx'
 import PatientDashboard from './dashboards/PatientDashboard.jsx'
-import { catalogEndpoints, fetchCatalog } from './api/registry.js'
+import { catalogEndpoints, fetchCatalog, getInsuranceCategories } from './api/registry.js'
 import { fetchClinicalCatalog } from './api/clinical.js'
 import { changeAccountPassword, getCurrentAccount, loginAccount, logoutAccount, refreshAccount, registerAccount } from './api/identity.js'
 import { getStaffProfile } from './api/staffProfile.js'
@@ -20,6 +20,18 @@ import { markPatientNotificationsRead as persistPatientNotificationsRead } from 
 import './App.css'
 
 const STAFF_ROLES = new Set(['doctor', 'letan', 'xnv'])
+const REFRESH_TOKEN_KEY = 'medicare_identity_refresh_token'
+
+const storedRefreshToken = () => {
+  try { return window.sessionStorage.getItem(REFRESH_TOKEN_KEY) || '' } catch { return '' }
+}
+
+const saveRefreshToken = (token) => {
+  try {
+    if (token) window.sessionStorage.setItem(REFRESH_TOKEN_KEY, token)
+    else window.sessionStorage.removeItem(REFRESH_TOKEN_KEY)
+  } catch { /* Session storage may be disabled; in-memory login still works. */ }
+}
 
 const toDashboardUser = (account, profile = null) => {
   const profileId = account.subject_id || account.username
@@ -39,6 +51,9 @@ const toDashboardUser = (account, profile = null) => {
       MaBenhAn: profile?.id || profileId,
       CCCD: profile?.cccd || account.username,
       NgaySinh: profile?.date_of_birth || '',
+      MaSoBHYT: profile?.insurance_card_number || '',
+      KyTuDauBHYT: profile?.insurance_category_code || '',
+      BHYTVerified: Boolean(profile?.insurance_verified),
     } : {}),
   }
 }
@@ -55,6 +70,7 @@ export default function App() {
   const [xacNhanMatKhauDangKy, setXacNhanMatKhauDangKy] = useState('')
   const [identityTokens, setIdentityTokens] = useState(null)
   const [identityAccount, setIdentityAccount] = useState(null)
+  const [restoringSession, setRestoringSession] = useState(() => Boolean(storedRefreshToken()))
   const [authBusy, setAuthBusy] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' })
@@ -64,6 +80,7 @@ export default function App() {
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [catalogError, setCatalogError] = useState('')
   const toastTimerRef = useRef(null)
+  const restorePromiseRef = useRef(null)
 
   const showNotification = (message, type = 'success') => {
     if (toastTimerRef.current) {
@@ -143,7 +160,7 @@ export default function App() {
     const endpoints = catalogEndpoints()
 
     try {
-      const [entries, doctorSchedules, clinicalEntries] = await Promise.all([
+      const [entries, doctorSchedules, clinicalEntries, insuranceCategories] = await Promise.all([
         Promise.all(
           Object.entries(endpoints).map(async ([key, endpoint]) => {
             const response = await fetchCatalog(endpoint)
@@ -166,6 +183,7 @@ export default function App() {
           if (!response.ok || !Array.isArray(result)) throw new Error(`Không thể tải ${key} từ Clinical`)
           return [key, result]
         })),
+        getInsuranceCategories(),
       ])
 
       const nextCatalog = [...entries, ...clinicalEntries].reduce(
@@ -173,7 +191,16 @@ export default function App() {
           ...accumulator,
           [key]: result,
         }),
-        { ...EMPTY_CATALOG_DATA, doctorSchedules, meta: {} },
+        {
+          ...EMPTY_CATALOG_DATA,
+          doctorSchedules,
+          bhyt: insuranceCategories.map((category) => ({
+            KyTuDauBHYT: category.code,
+            DoiTuongChinhSach: category.name,
+            TyLeHuong: category.coverage_bps / 10000,
+          })),
+          meta: {},
+        },
       )
 
       setCatalogData(nextCatalog)
@@ -204,6 +231,49 @@ export default function App() {
     window.localStorage.removeItem('medicare_session')
   }, [])
 
+  const onRestoredSession = useEffectEvent((issued, account, profile) => {
+    setIdentityTokens(issued)
+    setIdentityAccount(account)
+    setCurrentUser(toDashboardUser(account, profile))
+    setRole(account.role)
+    setMode(account.role)
+    void loadCatalogData().catch((error) => {
+      showNotification(error instanceof Error ? error.message : 'Không thể tải danh mục hệ thống.', 'error')
+    })
+  })
+
+  const onRestoreFailed = useEffectEvent(() => {
+    setMode('login')
+    showNotification('Không thể khôi phục phiên. Vui lòng đăng nhập lại.', 'error')
+  })
+
+  useEffect(() => {
+    const token = storedRefreshToken()
+    if (!token) return undefined
+    let active = true
+    // Reuse one request across React StrictMode's development effect replay.
+    if (!restorePromiseRef.current) {
+      restorePromiseRef.current = (async () => {
+        const issued = await refreshAccount(token)
+        saveRefreshToken(issued.refresh_token)
+        const account = await getCurrentAccount(issued.access_token)
+        const profile = account.role === 'patient'
+          ? await getPatientProfile(issued.access_token)
+          : STAFF_ROLES.has(account.role) ? await getStaffProfile(issued.access_token) : null
+        return { issued, account, profile }
+      })()
+    }
+    restorePromiseRef.current.then(({ issued, account, profile }) => {
+      if (active) onRestoredSession(issued, account, profile)
+    }).catch(() => {
+      saveRefreshToken('')
+      if (active) onRestoreFailed()
+    }).finally(() => {
+      if (active) setRestoringSession(false)
+    })
+    return () => { active = false }
+  }, [])
+
   useEffect(() => {
     if (!identityTokens?.refresh_token) return undefined
     let active = true
@@ -211,9 +281,13 @@ export default function App() {
     const timer = window.setTimeout(async () => {
       try {
         const issued = await refreshAccount(identityTokens.refresh_token)
-        if (active) setIdentityTokens(issued)
+        if (active) {
+          saveRefreshToken(issued.refresh_token)
+          setIdentityTokens(issued)
+        }
       } catch {
         if (active) {
+          saveRefreshToken('')
           setIdentityTokens(null)
           setIdentityAccount(null)
           setCurrentUser(null)
@@ -249,6 +323,7 @@ export default function App() {
       const profile = role === 'patient'
         ? await getPatientProfile(issued.access_token)
         : STAFF_ROLES.has(role) ? await getStaffProfile(issued.access_token) : null
+      saveRefreshToken(issued.refresh_token)
       setIdentityTokens(issued)
       setIdentityAccount(account)
       setPassword('')
@@ -302,6 +377,7 @@ export default function App() {
 
   const handleIdentityLogout = async () => {
     setAuthBusy(true)
+    saveRefreshToken('')
     try {
       if (identityTokens?.refresh_token) await logoutAccount(identityTokens.refresh_token)
     } catch {
@@ -320,6 +396,7 @@ export default function App() {
   const handleChangeIdentityPassword = async (oldPassword, newPassword) => {
     if (!identityTokens?.access_token) throw new Error('Phiên đăng nhập đã kết thúc.')
     await changeAccountPassword(identityTokens.access_token, oldPassword, newPassword)
+    saveRefreshToken('')
     setIdentityTokens(null)
     setIdentityAccount(null)
     setCurrentUser(null)
@@ -334,6 +411,10 @@ export default function App() {
       return { ...current, ...updatedFields }
     })
 	  }
+
+  if (restoringSession) {
+    return renderWithToast(<main className="page-shell"><p>Đang khôi phục phiên đăng nhập...</p></main>)
+  }
 
 	  if (mode === 'admin') {
 	    return renderWithToast(

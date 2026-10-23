@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from common.database import MySQLDatabase
+from common.identity_client import IdentityClient
 
 
 class HealthResponse(BaseModel):
@@ -18,8 +19,12 @@ def create_app(name: str, summary: str) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        yield
-        await database.close()
+        app.state.identity_client = IdentityClient()
+        try:
+            yield
+        finally:
+            await app.state.identity_client.close()
+            await database.close()
 
     app = FastAPI(
         title=f"Medicare {name.title()} Service",

@@ -185,6 +185,15 @@ async def confirm_hold(hold_id: str, body: ConfirmRequest, repository: SlotStore
     return as_response(row)
 
 
+@router.get("/internal/holds/{hold_id}", response_model=HoldResponse,
+            dependencies=[Depends(internal_service_token)])
+async def get_internal_hold(hold_id: str, repository: SlotStore) -> HoldResponse:
+    row = await repository.get_hold(hold_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Hold not found")
+    return as_response(row)
+
+
 @router.post("/internal/holds/{hold_id}/release", response_model=HoldResponse,
              dependencies=[Depends(internal_service_token)])
 async def release_internal_hold(hold_id: str, repository: SlotStore) -> HoldResponse:

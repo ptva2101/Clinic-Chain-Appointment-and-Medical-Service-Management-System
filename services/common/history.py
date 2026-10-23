@@ -27,8 +27,8 @@ class HistoryPage(BaseModel):
     offset: int
 
 
-def get_identity_client() -> IdentityClient:
-    return IdentityClient()
+def get_identity_client(request: Request) -> IdentityClient:
+    return request.app.state.identity_client
 
 
 async def require_admin(

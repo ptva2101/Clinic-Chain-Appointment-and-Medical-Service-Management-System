@@ -24,7 +24,35 @@ class MemoryRegistryRepository:
         return self.patients.setdefault(account_id, {
             "id": account_id, "identity_account_id": account_id, "cccd": cccd,
             "full_name": None, "date_of_birth": None, "phone": None,
+            "insurance_card_number": None, "insurance_category_code": None,
+            "insurance_verified": False,
         })
+
+    async def create_insurance_category(self, category):
+        if category["code"] == "DN":
+            raise ProfileConflict("Insurance category already exists")
+
+    async def insurance_categories(self):
+        return [{"code": "DN", "name": "Worker", "coverage_bps": 8000}]
+
+    async def patient_insurance(self, patient_id):
+        patient = next((p for p in self.patients.values() if p["id"] == patient_id), None)
+        if not patient:
+            return None
+        return {"patient_id": patient_id,
+                "insurance_card_number": patient["insurance_card_number"],
+                "insurance_category_code": patient["insurance_category_code"],
+                "insurance_verified": patient["insurance_verified"],
+                "coverage_bps": 8000 if patient["insurance_verified"] else 0}
+
+    async def verify_patient_insurance(self, patient_id, verified):
+        patient = next((p for p in self.patients.values() if p["id"] == patient_id), None)
+        if patient is None:
+            return None
+        if verified and not patient["insurance_card_number"]:
+            raise ProfileConflict("Patient has no insurance card and category")
+        patient["insurance_verified"] = verified
+        return patient
 
     async def get_patient(self, account_id, profile_id):
         patient = self.patients.get(account_id)
@@ -43,7 +71,11 @@ class MemoryRegistryRepository:
     async def update_patient(self, account_id, profile_id, changes):
         patient = await self.get_patient(account_id, profile_id)
         if patient:
+            if changes.get("insurance_category_code") not in (None, "DN"):
+                raise ProfileConflict("Unknown insurance category")
             patient.update(changes)
+            if "insurance_card_number" in changes:
+                patient["insurance_verified"] = False
         return patient
 
     async def ensure_staff(self, account_id, details):
@@ -118,6 +150,42 @@ def test_internal_patient_create_is_authenticated_and_idempotent(client):
     assert client.put(url, json={"cccd": "001095099999"}, headers=headers).status_code == 409
     other = f"/api/v1/registry/internal/patients/{uuid4()}"
     assert client.put(other, json=body, headers=headers).status_code == 409
+
+
+def test_patient_insurance_contract(client):
+    patient_id = str(uuid4())
+    internal = {"X-Service-Token": "test_internal_credential"}
+    assert client.put(f"/api/v1/registry/internal/patients/{patient_id}",
+                      headers=internal, json={"cccd": "001095012345"}).status_code == 200
+    client.identity.accounts["patient-token"] = {
+        "id": patient_id, "role": "patient", "subject_id": patient_id, "is_active": True,
+    }
+    path = "/api/v1/registry/patients/me"
+    auth = {"Authorization": "Bearer patient-token"}
+    assert client.patch(path, headers=auth,
+                        json={"insurance_card_number": "DN123456"}).status_code == 422
+    assert client.patch(path, headers=auth,
+                        json={"insurance_card_number": "DN123456",
+                              "insurance_category_code": "XX"}).status_code == 409
+    updated = client.patch(path, headers=auth,
+                           json={"insurance_card_number": "DN123456",
+                                 "insurance_category_code": "DN"})
+    assert updated.status_code == 200
+    assert updated.json()["insurance_category_code"] == "DN"
+    internal_path = f"/api/v1/registry/internal/patients/{patient_id}/insurance"
+    assert client.get(internal_path).status_code == 401
+    assert client.get(internal_path, headers=internal).json()["coverage_bps"] == 0
+    assert client.get("/api/v1/registry/insurance/categories").json()[0]["code"] == "DN"
+    client.identity.accounts["admin-token"] = {
+        "id": str(uuid4()), "role": "admin", "subject_id": None, "is_active": True,
+    }
+    admin = {"Authorization": "Bearer admin-token"}
+    assert client.patch(f"/api/v1/registry/patients/{patient_id}/insurance-verification",
+                        headers=auth, json={"verified": True}).status_code == 403
+    verified = client.patch(f"/api/v1/registry/patients/{patient_id}/insurance-verification",
+                            headers=admin, json={"verified": True})
+    assert verified.status_code == 200
+    assert client.get(internal_path, headers=internal).json()["coverage_bps"] == 8000
 
 
 def test_registry_rejects_invalid_patient_identifiers(client):

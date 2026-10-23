@@ -38,6 +38,9 @@ def test_reservation_is_unique_and_status_transitions_are_persistent(monkeypatch
             assert len({row["id"] for row in rows}) == 1
             appointment_id = rows[0]["id"]
             assert (await repository.get(appointment_id))["status"] == "pending"
+            assert appointment_id in {
+                row["id"] for row in await repository.list_stale("", 0, 20)
+            }
             assert (await repository.set_status(appointment_id, ("pending",), "confirmed"))[
                 "status"] == "confirmed"
             assert (await repository.set_status(appointment_id, ("confirmed",), "cancel_pending"))[
@@ -49,6 +52,21 @@ def test_reservation_is_unique_and_status_transitions_are_persistent(monkeypatch
                                              status="cancelled")) == 1
             with pytest.raises(AppointmentConflict):
                 await repository.set_status(appointment_id, ("pending",), "confirmed")
+            checked_in = await repository.reserve({**hold, "id": str(uuid4())}, account)
+            await repository.set_status(checked_in["id"], ("pending",), "confirmed")
+            pool = await database.pool()
+            async with pool.acquire() as connection:
+                async with connection.cursor() as cursor:
+                    await cursor.execute(
+                        "INSERT INTO appointment_checkins "
+                        "(appointment_id, branch_code, doctor_code, duty_date, queue_number, receptionist_code) "
+                        "VALUES (%s, %s, %s, %s, 1, 'LT_TEST')",
+                        (checked_in["id"], hold["branch_code"], hold["doctor_code"], hold["date"]),
+                    )
+                await connection.commit()
+            with pytest.raises(AppointmentConflict, match="Checked-in"):
+                await repository.set_status(checked_in["id"], ("confirmed",), "cancel_pending")
+            assert (await repository.get(checked_in["id"]))["status"] == "confirmed"
         finally:
             await database.close()
 

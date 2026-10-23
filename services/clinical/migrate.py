@@ -17,6 +17,37 @@ async def migrate() -> None:
                     for statement in statements:
                         if statement.strip():
                             await cursor.execute(statement)
+                    for name, definition in (
+                        ("config_code", "VARCHAR(96) NULL"),
+                        ("duty_date", "DATE NULL"),
+                        ("shift", "TINYINT UNSIGNED NULL"),
+                    ):
+                        await cursor.execute(f"SHOW COLUMNS FROM treatment_sessions LIKE '{name}'")
+                        column = await cursor.fetchone()
+                        if column["Null"] == "NO":
+                            await cursor.execute(
+                                f"ALTER TABLE treatment_sessions MODIFY COLUMN {name} {definition}"
+                            )
+                    await cursor.execute("SHOW COLUMNS FROM treatment_sessions LIKE 'source'")
+                    if await cursor.fetchone() is None:
+                        await cursor.execute(
+                            "ALTER TABLE treatment_sessions ADD COLUMN source VARCHAR(32) "
+                            "NOT NULL DEFAULT 'live'"
+                        )
+                    await cursor.execute(
+                        "SELECT CHECK_CLAUSE AS clause FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+                        "WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'ck_session_status'"
+                    )
+                    check = await cursor.fetchone()
+                    if check is None or "historical_unbooked" not in check["clause"]:
+                        if check is not None:
+                            await cursor.execute(
+                                "ALTER TABLE treatment_sessions DROP CHECK ck_session_status"
+                            )
+                        await cursor.execute(
+                            "ALTER TABLE treatment_sessions ADD CONSTRAINT ck_session_status "
+                            "CHECK (status IN ('pending', 'booked', 'completed', 'historical_unbooked'))"
+                        )
                     await cursor.execute(
                         "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() "
                         "AND table_name = 'historical_records'"

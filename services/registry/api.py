@@ -26,10 +26,34 @@ class EnsurePatientRequest(BaseModel):
 class PatientResponse(BaseModel):
     id: str
     identity_account_id: str
-    cccd: str
+    cccd: str | None
     full_name: str | None
     date_of_birth: date | None
     phone: str | None
+    insurance_card_number: str | None = None
+    insurance_category_code: str | None = None
+    insurance_verified: bool = False
+    source: str = "identity"
+
+
+class InsuranceCategoryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(min_length=2, max_length=10, pattern=r"^[A-Z0-9]+$")
+    name: str = Field(min_length=1, max_length=200)
+    coverage_bps: int = Field(ge=0, le=10000)
+
+
+class PatientInsuranceResponse(BaseModel):
+    patient_id: str
+    insurance_card_number: str | None
+    insurance_category_code: str | None
+    insurance_verified: bool
+    coverage_bps: int | None
+
+
+class VerifyInsuranceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    verified: bool
 
 
 class PatientListResponse(BaseModel):
@@ -73,7 +97,7 @@ class StaffResponse(BaseModel):
     phone: str | None
     specialty: str | None
     branch_code: str | None
-    source: Literal["identity", "legacy_demo"] = "identity"
+    source: Literal["identity", "legacy_demo", "legacy_mysql"] = "identity"
 
 
 class StaffListResponse(BaseModel):
@@ -88,6 +112,10 @@ class UpdatePatientRequest(BaseModel):
     full_name: str | None = Field(default=None, min_length=1, max_length=160)
     date_of_birth: date | None = None
     phone: str | None = Field(default=None, pattern=r"^\+?[0-9]{9,15}$")
+    insurance_card_number: str | None = Field(default=None, min_length=4, max_length=20,
+                                               pattern=r"^[A-Za-z0-9]+$")
+    insurance_category_code: str | None = Field(default=None, min_length=2, max_length=10,
+                                                 pattern=r"^[A-Z0-9]+$")
 
     @field_validator("full_name")
     @classmethod
@@ -109,6 +137,12 @@ class UpdatePatientRequest(BaseModel):
     def at_least_one_field(self):
         if not self.model_fields_set:
             raise ValueError("At least one profile field is required")
+        insurance_fields = {"insurance_card_number", "insurance_category_code"}
+        if self.model_fields_set & insurance_fields:
+            if not insurance_fields <= self.model_fields_set:
+                raise ValueError("Insurance card and category must be updated together")
+            if (self.insurance_card_number is None) != (self.insurance_category_code is None):
+                raise ValueError("Insurance card and category must both be set or both be null")
         return self
 
 
@@ -116,8 +150,8 @@ def get_repository(request: Request) -> RegistryRepository:
     return RegistryRepository(request.app.state.database)
 
 
-def get_identity_client() -> IdentityClient:
-    return IdentityClient()
+def get_identity_client(request: Request) -> IdentityClient:
+    return request.app.state.identity_client
 
 
 async def authenticated_account(
@@ -198,6 +232,51 @@ async def lookup_patients(
     return [PatientResponse.model_validate(row) for row in rows]
 
 
+@router.get("/internal/patients/{patient_id}/insurance", response_model=PatientInsuranceResponse,
+            dependencies=[Depends(require_service_token)])
+async def internal_patient_insurance(
+    patient_id: UUID, repository: Annotated[RegistryRepository, Depends(get_repository)],
+) -> PatientInsuranceResponse:
+    row = await repository.patient_insurance(str(patient_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Patient profile not found")
+    return PatientInsuranceResponse.model_validate(row)
+
+
+@router.get("/insurance/categories", response_model=list[InsuranceCategoryResponse])
+async def insurance_categories(
+    repository: Annotated[RegistryRepository, Depends(get_repository)],
+) -> list[InsuranceCategoryResponse]:
+    return [InsuranceCategoryResponse.model_validate(row)
+            for row in await repository.insurance_categories()]
+
+
+@router.post("/insurance/categories", response_model=InsuranceCategoryResponse, status_code=201)
+async def create_insurance_category(
+    body: InsuranceCategoryResponse, _admin: AdminAccount,
+    repository: Annotated[RegistryRepository, Depends(get_repository)],
+) -> InsuranceCategoryResponse:
+    try:
+        await repository.create_insurance_category(body.model_dump())
+    except ProfileConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return body
+
+
+@router.patch("/patients/{patient_id}/insurance-verification", response_model=PatientResponse)
+async def verify_insurance(
+    patient_id: UUID, body: VerifyInsuranceRequest, _admin: AdminAccount,
+    repository: Annotated[RegistryRepository, Depends(get_repository)],
+) -> PatientResponse:
+    try:
+        row = await repository.verify_patient_insurance(str(patient_id), body.verified)
+    except ProfileConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="Patient profile not found")
+    return PatientResponse.model_validate(row)
+
+
 @router.put("/internal/staff/{account_id}", response_model=StaffResponse,
             dependencies=[Depends(require_service_token)])
 async def ensure_staff(
@@ -247,7 +326,10 @@ async def update_my_patient_profile(
     repository: Annotated[RegistryRepository, Depends(get_repository)],
 ) -> PatientResponse:
     changes = body.model_dump(exclude_unset=True)
-    patient = await repository.update_patient(account["id"], account["subject_id"], changes)
+    try:
+        patient = await repository.update_patient(account["id"], account["subject_id"], changes)
+    except ProfileConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if patient is None:
         raise HTTPException(status_code=404, detail="Patient profile not found")
     return PatientResponse.model_validate(patient)

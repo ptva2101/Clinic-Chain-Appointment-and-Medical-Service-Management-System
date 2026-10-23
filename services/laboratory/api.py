@@ -65,8 +65,8 @@ def get_repository(request: Request) -> LabRepository:
     return LabRepository(request.app.state.database)
 
 
-def get_identity_client() -> IdentityClient:
-    return IdentityClient()
+def get_identity_client(request: Request) -> IdentityClient:
+    return request.app.state.identity_client
 
 
 Repository = Annotated[LabRepository, Depends(get_repository)]

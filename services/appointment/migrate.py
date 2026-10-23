@@ -17,6 +17,16 @@ async def migrate() -> None:
                     for statement in statements:
                         if statement.strip():
                             await cursor.execute(statement)
+                    await cursor.execute(
+                        "SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS "
+                        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointments' "
+                        "AND INDEX_NAME = 'ix_appointment_reconcile' LIMIT 1"
+                    )
+                    if await cursor.fetchone() is None:
+                        await cursor.execute(
+                            "ALTER TABLE appointments ADD INDEX ix_appointment_reconcile "
+                            "(status, updated_at, id)"
+                        )
                 await connection.commit()
             except Exception:
                 await connection.rollback()

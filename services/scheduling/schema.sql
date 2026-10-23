@@ -5,8 +5,13 @@ CREATE TABLE IF NOT EXISTS doctor_schedules (
     duty_date DATE NOT NULL,
     shift TINYINT UNSIGNED NOT NULL,
     status VARCHAR(16) NOT NULL DEFAULT 'active',
+    source VARCHAR(32) NOT NULL DEFAULT 'live',
+    legacy_source_id VARCHAR(64) NULL,
+    bookable_doctor_code VARCHAR(128) GENERATED ALWAYS AS
+        (CASE WHEN status = 'historical' THEN NULL ELSE doctor_code END) STORED,
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    UNIQUE KEY uq_doctor_date_shift (doctor_code, duty_date, shift),
+    UNIQUE KEY uq_bookable_doctor_date_shift (bookable_doctor_code, duty_date, shift),
+    UNIQUE KEY uq_schedule_legacy_source (legacy_source_id),
     KEY ix_schedule_date_branch (duty_date, branch_code, shift)
 );
 
@@ -35,6 +40,7 @@ CREATE TABLE IF NOT EXISTS slot_holds (
     UNIQUE KEY uq_patient_request (patient_id, request_key),
     UNIQUE KEY uq_hold_appointment (appointment_id),
     KEY ix_hold_slot_state (config_code, duty_date, shift, state, expires_at),
+    KEY ix_hold_schedule_state (doctor_code, branch_code, duty_date, shift, state, expires_at),
     KEY ix_hold_patient (patient_id, created_at),
     CONSTRAINT fk_hold_inventory FOREIGN KEY (config_code, duty_date, shift)
         REFERENCES slot_inventory(config_code, duty_date, shift),

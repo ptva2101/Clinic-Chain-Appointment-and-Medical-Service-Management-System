@@ -28,15 +28,26 @@ class MemorySchedules:
     def __init__(self):
         self.rows = []
         self.booked_ids = set()
+        self.held_ids = set()
 
     async def get_schedule(self, schedule_id):
         return next((row for row in self.rows if row["id"] == schedule_id), None)
+
+    async def schedule_impact(self, schedule_id):
+        row = await self.get_schedule(schedule_id)
+        if row is None:
+            return None
+        confirmed = int(schedule_id in self.booked_ids)
+        held = int(schedule_id in self.held_ids)
+        return {"schedule_id": schedule_id, "status": row["status"],
+                "confirmed_appointments": confirmed, "active_holds": held,
+                "can_change": row["status"] == "active" and not confirmed and not held}
 
     async def change_schedule(self, schedule_id, new_doctor_code=None):
         row = await self.get_schedule(schedule_id)
         if row is None or row["status"] != "active":
             raise ScheduleConflict("Doctor schedule is not active")
-        if schedule_id in self.booked_ids:
+        if schedule_id in self.booked_ids or schedule_id in self.held_ids:
             raise ScheduleConflict("Shift has active appointments")
         if new_doctor_code:
             row["doctor_code"] = new_doctor_code
@@ -45,7 +56,8 @@ class MemorySchedules:
         return row
 
     async def list_schedules(self, from_date, to_date, doctor_code):
-        return [row for row in self.rows
+        return [{**row, "confirmed_appointments": int(row["id"] in self.booked_ids),
+                 "active_holds": int(row["id"] in self.held_ids)} for row in self.rows
                 if (from_date is None or row["duty_date"] >= from_date)
                 and (to_date is None or row["duty_date"] <= to_date)
                 and (doctor_code is None or row["doctor_code"] == doctor_code)]
@@ -141,3 +153,34 @@ def test_only_unbooked_shifts_can_be_cancelled_or_transferred(client):
     transferred = client.post(f"{base}/3/transfer", json={"new_doctor_code": "BS901"}, headers=admin)
     assert transferred.status_code == 200
     assert transferred.json()["MaBacSi"] == "BS901"
+
+
+def test_schedule_impact_is_admin_only_and_change_guard_is_rechecked(client):
+    base = "/api/v1/scheduling/doctor-schedules"
+    admin = {"Authorization": "Bearer admin"}
+    day = (date.today() + timedelta(days=1)).isoformat()
+    created = client.post(f"{base}/bulk", json={"schedules": [
+        {"MaBacSi": "BS900", "MaChiNhanh": "CN_HN", "NgayTruc": day, "CaTruc": 1},
+    ]}, headers=admin).json()[0]
+    impact_url = f"{base}/{created['id']}/impact"
+    assert client.get(impact_url).status_code == 401
+    assert client.get(impact_url, headers={"Authorization": "Bearer patient"}).status_code == 403
+    assert client.get(f"{base}/999/impact", headers=admin).status_code == 404
+    assert client.get(impact_url, headers=admin).json() == {
+        "schedule_id": created["id"], "status": "active",
+        "confirmed_appointments": 0, "active_holds": 0, "can_change": True,
+    }
+    repo = app.dependency_overrides[get_repository]()
+    repo.held_ids.add(created["id"])
+    assert client.get(impact_url, headers=admin).json()["can_change"] is False
+    assert client.post(f"{base}/1/cancel", headers=admin).status_code == 409
+    repo.held_ids.clear()
+    repo.booked_ids.add(created["id"])
+    assert client.get(base).json()[0]["confirmed_appointments"] == 1
+    assert client.get(impact_url, headers=admin).json()["confirmed_appointments"] == 1
+    assert client.post(f"{base}/1/transfer", json={"new_doctor_code": "BS901"},
+                       headers=admin).status_code == 409
+    repo.booked_ids.clear()
+    assert client.post(f"{base}/1/cancel", headers=admin).status_code == 200
+    assert client.get(impact_url, headers=admin).json()["can_change"] is False
+    assert f"{base}/{{schedule_id}}/impact" in client.get("/openapi.json").json()["paths"]

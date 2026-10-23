@@ -110,6 +110,34 @@ services:
     ports:
       - "127.0.0.1:8004:8000"
 
+  appointment-reconciler:
+    build:
+      context: ./services
+      dockerfile: Dockerfile
+      target: runtime
+    restart: unless-stopped
+    depends_on:
+      appointment:
+        condition: service_healthy
+      scheduling:
+        condition: service_healthy
+      billing:
+        condition: service_healthy
+    command: ["python", "-m", "appointment.reconcile"]
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: appointment_db
+      DB_USER: appointment_app
+      DB_PASSWORD: dev_only_appointment
+      SCHEDULING_INTERNAL_URL: http://scheduling:8000
+      SCHEDULING_INTERNAL_TOKEN: ${SCHEDULING_INTERNAL_TOKEN:-replace_this_scheduling_internal_token_before_deployment}
+      BILLING_INTERNAL_URL: http://billing:8000
+      BILLING_INTERNAL_TOKEN: ${BILLING_INTERNAL_TOKEN:-replace_this_billing_internal_token_before_deployment}
+      APPOINTMENT_RECONCILE_INTERVAL_SECONDS: ${APPOINTMENT_RECONCILE_INTERVAL_SECONDS:-30}
+      APPOINTMENT_RECONCILE_MIN_AGE_SECONDS: ${APPOINTMENT_RECONCILE_MIN_AGE_SECONDS:-30}
+      APPOINTMENT_RECONCILE_BATCH_SIZE: ${APPOINTMENT_RECONCILE_BATCH_SIZE:-20}
+
   billing:
     <<: *api-base
     command: ["sh", "-c", "python -m billing.migrate && exec uvicorn billing.main:app --host 0.0.0.0 --port 8000"]
@@ -122,6 +150,7 @@ services:
       IDENTITY_INTERNAL_URL: http://identity:8000
       APPOINTMENT_INTERNAL_URL: http://appointment:8000
       REGISTRY_INTERNAL_URL: http://registry:8000
+      REGISTRY_INTERNAL_TOKEN: ${REGISTRY_INTERNAL_TOKEN:-replace_this_internal_service_token_before_deployment}
       BILLING_INTERNAL_TOKEN: ${BILLING_INTERNAL_TOKEN:-replace_this_billing_internal_token_before_deployment}
       BILLING_CORS_ORIGINS: ${BILLING_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     ports:

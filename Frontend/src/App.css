@@ -1022,6 +1022,12 @@
   font-size: 0.92rem;
 }
 
+.admin-action-note {
+  color: #64748b;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -3106,29 +3112,14 @@
   gap: 10px;
 }
 
-.technician-qr-box {
-  display: grid;
-  justify-items: center;
-  gap: 10px;
+.technician-payment-note {
+  margin: 16px 0;
   padding: 16px;
   border: 1px dashed #94a3b8;
   border-radius: 14px;
   background: #f8fafc;
   color: #075985;
-  font-weight: 900;
-}
-
-.technician-qr-pattern {
-  width: 150px;
-  aspect-ratio: 1;
-  border: 10px solid #ffffff;
-  border-radius: 10px;
-  background:
-    linear-gradient(90deg, #0f172a 12px, transparent 12px) 0 0 / 32px 32px,
-    linear-gradient(#0f172a 12px, transparent 12px) 0 0 / 32px 32px,
-    linear-gradient(45deg, transparent 45%, #075985 45% 55%, transparent 55%) 0 0 / 26px 26px,
-    #e0f2fe;
-  box-shadow: inset 0 0 0 12px #ffffff;
+  font-weight: 700;
 }
 
 .patient-shell {
@@ -3507,6 +3498,7 @@
 }
 
 .patient-profile-form-grid input,
+.patient-profile-form-grid select,
 .patient-password-panel input {
   width: 100%;
   height: 42px;
@@ -3518,7 +3510,8 @@
   font: inherit;
 }
 
-.patient-profile-form-grid input:disabled {
+.patient-profile-form-grid input:disabled,
+.patient-profile-form-grid select:disabled {
   border-color: #dbe7ef;
   background: #f8fafc;
   color: #64748b;
@@ -3526,6 +3519,7 @@
 }
 
 .patient-profile-form-grid input:not(:disabled):focus,
+.patient-profile-form-grid select:not(:disabled):focus,
 .patient-password-panel input:focus {
   border-color: #0f766e;
   outline: 3px solid rgba(15, 118, 110, 0.14);
@@ -4245,26 +4239,6 @@
   color: #64748b;
   font-size: 0.82rem;
   font-weight: 800;
-}
-
-.qr-box {
-  margin: 20px auto;
-  display: grid;
-  justify-items: center;
-  gap: 10px;
-  color: #475569;
-  font-weight: 800;
-}
-
-.qr-grid {
-  width: 180px;
-  height: 180px;
-  border: 12px solid #0f172a;
-  border-radius: 12px;
-  background:
-    linear-gradient(90deg, #0f172a 10px, transparent 10px) 0 0 / 28px 28px,
-    linear-gradient(#0f172a 10px, transparent 10px) 0 0 / 28px 28px,
-    #ffffff;
 }
 
 .payment-confirm-button {

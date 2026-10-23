@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { LogOut } from 'lucide-react'
 import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
 import { acceptTest, getTests, updateResult } from '../api/laboratory.js'
@@ -28,32 +28,23 @@ export default function TechnicianDashboard({ user, identityAccessToken, onLogou
     setFeedback(message)
     showNotification?.(message, type)
   }
-  const [branches] = useState([])
   const [patients] = useState([])
-  const [services] = useState([])
   const [bookings] = useState([])
   const [visitRecords] = useState([])
   const [labDetails, setLabDetails] = useState([])
-  const bhytCategories = [
-    { KyTuDauBHYT: 'TE', DoiTuongChinhSach: 'Trẻ em dưới 6 tuổi', TyLeHuong: 1 },
-    { KyTuDauBHYT: 'HT', DoiTuongChinhSach: 'Cán bộ Hưu trí', TyLeHuong: 0.95 },
-    { KyTuDauBHYT: 'DN', DoiTuongChinhSach: 'Người lao động doanh nghiệp', TyLeHuong: 0.8 },
-  ]
   const [technicianProfile] = useState({
-    MaXNV: user?.MaXNV || user?.id || 'XNV001',
+    MaXNV: user?.MaXNV || user?.id || '',
     HoTen: user?.HoTen || user?.name || user?.id || 'Xét nghiệm viên',
-    MaChiNhanh: user?.MaChiNhanh || 'CN_CG',
+    MaChiNhanh: user?.MaChiNhanh || '',
   })
 
   const effectiveBranches = catalogData?.branches || []
   const effectiveServices = catalogData?.services || []
-	  const effectiveBhytCategories = catalogData?.bhyt?.length ? catalogData.bhyt : bhytCategories
+  const effectiveBhytCategories = catalogData?.bhyt || []
   const allKnownServices = effectiveServices
 
-  const maChiNhanh = effectiveBranches.some((branch) => branch.MaChiNhanh === technicianProfile.MaChiNhanh)
-    ? technicianProfile.MaChiNhanh
-    : effectiveBranches[0]?.MaChiNhanh || ''
-  const currentBranch = effectiveBranches.find((branch) => branch.MaChiNhanh === maChiNhanh) || effectiveBranches[0]
+  const maChiNhanh = technicianProfile.MaChiNhanh
+  const currentBranch = effectiveBranches.find((branch) => branch.MaChiNhanh === maChiNhanh)
   const normalizeLabApiRow = (row) => {
     const giaGoc = Number(row.GiaGoc || 0)
     const bhytRate = Number(row.TyLeHuong || 0)
@@ -90,6 +81,7 @@ export default function TechnicianDashboard({ user, identityAccessToken, onLogou
         CCCD: row.CCCD || '',
         SDT: row.SDT || '',
         KyTuDauBHYT: row.KyTuDauBHYT || '',
+        BHYTVerified: Boolean(row.BHYTVerified),
       },
       service: {
         MaDichVu: row.MaDichVu,
@@ -127,9 +119,11 @@ export default function TechnicianDashboard({ user, identityAccessToken, onLogou
     }
   }
 
+  const onLoadLabRows = useEffectEvent(() => { void loadLabRows() })
   useEffect(() => {
-    loadLabRows()
-  }, [maChiNhanh])
+    const timer = window.setTimeout(() => onLoadLabRows(), 0)
+    return () => window.clearTimeout(timer)
+  }, [maChiNhanh, identityAccessToken])
 
   const getPatient = (maBenhAn) =>
     patients.find((patient) => patient.MaBenhAn === maBenhAn) || {
@@ -149,8 +143,9 @@ export default function TechnicianDashboard({ user, identityAccessToken, onLogou
 
   const getBooking = (maLichHen) => bookings.find((booking) => booking.MaLichHen === maLichHen)
 
-  const getBhytRate = (patient) =>
-    effectiveBhytCategories.find((category) => category.KyTuDauBHYT === patient.KyTuDauBHYT)?.TyLeHuong || 0
+  const getBhytRate = (patient) => patient.BHYTVerified
+    ? effectiveBhytCategories.find((category) => category.KyTuDauBHYT === patient.KyTuDauBHYT)?.TyLeHuong || 0
+    : 0
 
   const formatMoney = (value) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value)
@@ -185,7 +180,7 @@ export default function TechnicianDashboard({ user, identityAccessToken, onLogou
   }
 
   const labRows = buildLabRows()
-  const currentTechnicianId = technicianProfile.MaXNV || 'XNV001'
+  const currentTechnicianId = technicianProfile.MaXNV
   const pendingRows = labRows.filter((row) => row.lab.TrangThaiXetNghiem === 'Chưa thực hiện')
   const completedRows = labRows.filter(
     (row) =>
@@ -378,11 +373,11 @@ export default function TechnicianDashboard({ user, identityAccessToken, onLogou
       <header className="technician-topbar">
         <div>
           <span className="technician-kicker">Medicare Laboratory</span>
-          <h1>TRUNG TÂM XÉT NGHIỆM & CHẨN ĐOÁN HÌNH ẢNH - Medicare {currentBranch.TenChiNhanh}</h1>
+          <h1>TRUNG TÂM XÉT NGHIỆM & CHẨN ĐOÁN HÌNH ẢNH - Medicare {currentBranch?.TenChiNhanh || 'Chưa có chi nhánh'}</h1>
           <p>
             Xét nghiệm viên: <strong>{technicianProfile.HoTen}</strong> · Mã tài khoản:{' '}
             <strong>{technicianProfile.MaXNV}</strong> · Chi nhánh:{' '}
-            <strong>{currentBranch.MaChiNhanh}</strong>
+            <strong>{currentBranch?.MaChiNhanh || 'Chưa có chi nhánh'}</strong>
           </p>
         </div>
         <button type="button" className="technician-logout-button" onClick={onLogout}>
@@ -485,7 +480,7 @@ export default function TechnicianDashboard({ user, identityAccessToken, onLogou
                           disabled={labActionLoading === row.lab.MaChiTietXN}
                           onClick={() => handleOpenPayment(row)}
                         >
-                          {labActionLoading === row.lab.MaChiTietXN ? 'Đang xử lý...' : 'Quét QR Thanh toán'}
+                          {labActionLoading === row.lab.MaChiTietXN ? 'Đang xử lý...' : 'Ghi nhận thanh toán'}
                         </button>
                       )}
                     </td>
@@ -567,7 +562,7 @@ export default function TechnicianDashboard({ user, identityAccessToken, onLogou
               <div>
                 <span>Chi nhánh phụ trách</span>
                 <strong>
-                  {currentBranch.TenChiNhanh} ({currentBranch.MaChiNhanh})
+                  {currentBranch?.TenChiNhanh || 'Chưa có chi nhánh'} ({currentBranch?.MaChiNhanh || '—'})
                 </strong>
               </div>
             </section>
@@ -636,8 +631,8 @@ export default function TechnicianDashboard({ user, identityAccessToken, onLogou
             >
               ×
             </button>
-            <span className="technician-kicker">Cổng thanh toán phòng Lab</span>
-            <h2>QR thanh toán xét nghiệm</h2>
+            <span className="technician-kicker">Thanh toán phòng xét nghiệm</span>
+            <h2>Ghi nhận thanh toán xét nghiệm</h2>
             <div className="technician-invoice-grid">
               <span>Bệnh nhân</span>
               <strong>{paymentModal.patient.HoTen}</strong>
@@ -650,17 +645,14 @@ export default function TechnicianDashboard({ user, identityAccessToken, onLogou
               <span>Giá cuối thực trả</span>
               <strong>{formatMoney(paymentModal.finalAmount)}</strong>
             </div>
-            <div className="technician-qr-box">
-              <div className="technician-qr-pattern" />
-              <span>QR Medicare Lab</span>
-            </div>
+            <p className="technician-payment-note">Thao tác này ghi nhận thanh toán trong hệ thống, không thực hiện chuyển tiền qua ngân hàng.</p>
             <button
               type="button"
               className="technician-pay-button"
               onClick={handleConfirmPayment}
               disabled={labActionLoading === paymentModal.lab.MaChiTietXN}
             >
-              {labActionLoading === paymentModal.lab.MaChiTietXN ? 'Đang xác nhận...' : 'Xác nhận đã chuyển khoản'}
+              {labActionLoading === paymentModal.lab.MaChiTietXN ? 'Đang xác nhận...' : 'Xác nhận ghi nhận thanh toán'}
             </button>
           </section>
         </div>

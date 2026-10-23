@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { LogOut } from 'lucide-react'
 import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
 import { getDoctorQueue, updateAppointmentStatus } from '../api/appointment.js'
@@ -6,14 +6,13 @@ import { completeAppointment, completeTreatmentSession, getCompletedEncounters, 
 import TablePagination from './TablePagination.jsx'
 import { getPageRows } from './tablePagination.js'
 
-export default function DoctorDashboard({ user, identityAccessToken, onLogout, onChangePassword, showNotification, scheduleAdjustments = [], catalogData = EMPTY_CATALOG_DATA }) {
+export default function DoctorDashboard({ user, identityAccessToken, onLogout, onChangePassword, showNotification, catalogData = EMPTY_CATALOG_DATA }) {
   const [doctorProfile, setDoctorProfile] = useState({
-    MaBacSi: user?.MaBacSi || user?.id || 'BS001',
-    HoTen: user?.HoTen || user?.name || 'Nguyễn Văn An',
-    ChuyenKhoa: user?.ChuyenKhoa || 'Nội tổng quát',
-    SDT: user?.SDT || '0911222333',
-    MaChiNhanh: user?.MaChiNhanh || 'CN_CG',
-    TenChiNhanh: user?.TenChiNhanh || 'Medicare - Cơ sở Cầu Giấy',
+    MaBacSi: user?.MaBacSi || user?.id || '',
+    HoTen: user?.HoTen || user?.name || '',
+    ChuyenKhoa: user?.ChuyenKhoa || '',
+    SDT: user?.SDT || '',
+    MaChiNhanh: user?.MaChiNhanh || '',
   })
   const [contactForm, setContactForm] = useState({ SDT: doctorProfile.SDT })
   const [passwordForm, setPasswordForm] = useState({
@@ -39,11 +38,11 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     TrieuChung: '',
     MaBenh: '',
     LoiDan: '',
-    MaThuoc: 'TH001',
+    MaThuoc: '',
     SoLuong: '10',
     LieuDung: '',
-    MaXetNghiem: 'XN_MAU',
-    MaDieuTri: 'DT_TRUYEN_DICH',
+    MaXetNghiem: '',
+    MaDieuTri: '',
     TongSoBuoi: '3',
   })
   const [diagnosisSearch, setDiagnosisSearch] = useState('')
@@ -54,8 +53,6 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     setFeedback(message)
     showNotification?.(message, type)
   }
-  const [patients] = useState([])
-  const [services] = useState([])
   const doctorSchedules = catalogData?.doctorSchedules || []
   const [bookings, setBookings] = useState([])
   const [diseases] = useState([])
@@ -69,6 +66,9 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
   const effectiveDiseases = catalogData?.diseases?.length ? catalogData.diseases : diseases
   const effectiveMedicines = catalogData?.medicines?.length ? catalogData.medicines : medicines
   const effectiveBranches = catalogData?.branches || []
+  const doctorBranchName = effectiveBranches.find(
+    (branch) => branch.MaChiNhanh === doctorProfile.MaChiNhanh,
+  )?.TenChiNhanh || doctorProfile.MaChiNhanh || 'Chưa có chi nhánh'
 
   const getPatient = (maBenhAn) =>
     doctorPatientMap.get(maBenhAn) ||
@@ -163,6 +163,30 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     },
   })
 
+  function groupTreatmentResponse(items, maLuotKham) {
+    const treatmentMap = (items || []).reduce((currentMap, item) => {
+      const key = item.MaDichVu || item.MaLichTrinh
+      const current = currentMap[key] || {
+        MaLichTrinh: item.MaLichTrinh,
+        MaLichHen: item.MaLichHen || '',
+        MaLuotKham: item.MaLuotKham || maLuotKham,
+        MaDichVu: item.MaDichVu,
+        TenDichVu: item.TenDichVu,
+        TongSoBuoi: 0,
+        SoBuoiDaLam: 0,
+        TrangThai: item.TrangThai || 'Chưa đặt lịch',
+      }
+
+      current.TongSoBuoi += 1
+      if (item.TrangThai === 'Hoàn thành') {
+        current.SoBuoiDaLam += 1
+      }
+      currentMap[key] = current
+      return currentMap
+    }, {})
+
+    return Object.values(treatmentMap)
+  }
   const mergeDoctorHistoryRows = (rows) => {
     const historyRows = Array.isArray(rows) ? rows : []
 
@@ -332,10 +356,14 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     return result.data
   }
 
+  const onLoadDoctorData = useEffectEvent(() => {
+    void loadDoctorQueue()
+    void loadDoctorCompletedEncounters()
+  })
   useEffect(() => {
-    loadDoctorQueue()
-    loadDoctorCompletedEncounters()
-  }, [doctorProfile.MaBacSi])
+    const timer = window.setTimeout(() => onLoadDoctorData(), 0)
+    return () => window.clearTimeout(timer)
+  }, [doctorProfile.MaBacSi, identityAccessToken])
 
   const labServices = effectiveServices.filter((service) => service.LoaiDichVu === 'Xét nghiệm')
   const treatmentServices = effectiveServices.filter((service) => service.LoaiDichVu === 'Điều trị')
@@ -523,30 +551,6 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     is_draft: isDraft,
   })
 
-  const groupTreatmentResponse = (items, maLuotKham) => {
-    const treatmentMap = (items || []).reduce((currentMap, item) => {
-      const key = item.MaDichVu || item.MaLichTrinh
-      const current = currentMap[key] || {
-        MaLichTrinh: item.MaLichTrinh,
-        MaLichHen: item.MaLichHen || '',
-        MaLuotKham: item.MaLuotKham || maLuotKham,
-        MaDichVu: item.MaDichVu,
-        TenDichVu: item.TenDichVu,
-        TongSoBuoi: 0,
-        SoBuoiDaLam: 0,
-        TrangThai: item.TrangThai || 'Chưa đặt lịch',
-      }
-
-      current.TongSoBuoi += 1
-      if (item.TrangThai === 'Hoàn thành') {
-        current.SoBuoiDaLam += 1
-      }
-      currentMap[key] = current
-      return currentMap
-    }, {})
-
-    return Object.values(treatmentMap)
-  }
 
   const applyExamResponse = (data, status) => {
     if (!data?.MaLuotKham || !activeBooking || !activePatient) return ''
@@ -807,23 +811,6 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     notify(`Đã thêm chỉ định ${getService(selectedLabServiceId).TenDichVu}.`)
   }
 
-  const handleMockLabResult = (maChiTietXN) => {
-    setLabDetails((current) =>
-      current.map((lab) =>
-        lab.MaChiTietXN === maChiTietXN
-          ? {
-              ...lab,
-              KetQuaXetNghiem: 'Kết quả đã được phòng Lab trả: các chỉ số trong giới hạn tham chiếu.',
-              MaXNV: 'XNV001',
-              TrangThaiXetNghiem: 'Đã có kết quả',
-              PaymentToken: lab.PaymentToken || 'PAY_LAB_SIMULATED',
-            }
-          : lab,
-      ),
-    )
-    notify('Đã mô phỏng phòng Lab trả kết quả realtime.')
-  }
-
   const handleAddTreatmentPlan = () => {
     if (!activeBooking) {
       notify('Vui lòng mời bệnh nhân vào khám trước khi chỉ định điều trị.', 'error')
@@ -1000,7 +987,7 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
           <h1>Xin chào, Bác sĩ {doctorProfile.HoTen}</h1>
           <p>
             Chuyên khoa: <strong>{doctorProfile.ChuyenKhoa}</strong> · Chi nhánh:{' '}
-            <strong>{doctorProfile.TenChiNhanh}</strong>
+            <strong>{doctorBranchName}</strong>
           </p>
         </div>
         <button type="button" className="doctor-logout-button" onClick={onLogout}>
@@ -1283,15 +1270,6 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
                               : 'Chờ phòng Lab/Thanh toán'}
                           </strong>
                           <p>{lab.KetQuaXetNghiem || 'Chưa có kết quả từ phòng Lab.'}</p>
-                          {lab.TrangThaiXetNghiem === 'Chưa thực hiện' && (
-                            <button
-                              type="button"
-                              className="doctor-secondary-button compact"
-                              onClick={() => handleMockLabResult(lab.MaChiTietXN)}
-                            >
-                              Mô phỏng Lab trả kết quả
-                            </button>
-                          )}
                         </article>
                       ))}
                       {currentLabOrders.length === 0 && (
@@ -1743,7 +1721,7 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
               </div>
               <div>
                 <span>Chi nhánh mặc định</span>
-                <strong>{doctorProfile.TenChiNhanh}</strong>
+                <strong>{doctorBranchName}</strong>
               </div>
             </section>
 

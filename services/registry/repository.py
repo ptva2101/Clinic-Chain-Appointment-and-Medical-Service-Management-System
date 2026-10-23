@@ -10,8 +10,76 @@ class ProfileConflict(Exception):
 
 
 class RegistryRepository:
+    PATIENT_FIELDS = ("id, identity_account_id, cccd, full_name, date_of_birth, phone, "
+                      "insurance_card_number, insurance_category_code, insurance_verified, source")
+
     def __init__(self, database: MySQLDatabase) -> None:
         self.database = database
+
+    async def insurance_categories(self) -> list[dict]:
+        pool = await self.database.pool()
+        async with pool.acquire() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute("SELECT code, name, coverage_bps FROM insurance_categories ORDER BY code")
+                rows = await cursor.fetchall()
+                await connection.rollback()
+                return rows
+
+    async def create_insurance_category(self, category: dict) -> None:
+        pool = await self.database.pool()
+        async with pool.acquire() as connection:
+            try:
+                async with connection.cursor() as cursor:
+                    await cursor.execute(
+                        "INSERT INTO insurance_categories (code, name, coverage_bps) "
+                        "VALUES (%s, %s, %s)",
+                        (category["code"], category["name"], category["coverage_bps"]),
+                    )
+                await connection.commit()
+            except aiomysql.IntegrityError as exc:
+                await connection.rollback()
+                raise ProfileConflict("Insurance category already exists") from exc
+            except Exception:
+                await connection.rollback()
+                raise
+
+    async def patient_insurance(self, patient_id: str) -> dict | None:
+        pool = await self.database.pool()
+        async with pool.acquire() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    "SELECT p.id AS patient_id, p.insurance_card_number, p.insurance_category_code, "
+                    "p.insurance_verified, CASE WHEN p.insurance_verified THEN c.coverage_bps "
+                    "ELSE 0 END AS coverage_bps FROM patients p LEFT JOIN insurance_categories c "
+                    "ON c.code = p.insurance_category_code WHERE p.id = %s", (patient_id,))
+                row = await cursor.fetchone()
+                await connection.rollback()
+                return row
+
+    async def verify_patient_insurance(self, patient_id: str, verified: bool) -> dict | None:
+        pool = await self.database.pool()
+        async with pool.acquire() as connection:
+            try:
+                async with connection.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT insurance_card_number, insurance_category_code FROM patients "
+                        "WHERE id = %s FOR UPDATE", (patient_id,))
+                    row = await cursor.fetchone()
+                    if row is None:
+                        await connection.rollback()
+                        return None
+                    if verified and (not row["insurance_card_number"] or not row["insurance_category_code"]):
+                        raise ProfileConflict("Patient has no insurance card and category")
+                    await cursor.execute("UPDATE patients SET insurance_verified = %s WHERE id = %s",
+                                         (verified, patient_id))
+                    await cursor.execute(
+                        f"SELECT {self.PATIENT_FIELDS} FROM patients WHERE id = %s", (patient_id,))
+                    result = await cursor.fetchone()
+                await connection.commit()
+                return result
+            except Exception:
+                await connection.rollback()
+                raise
 
     async def patients_by_ids(self, profile_ids: list[str]) -> list[dict]:
         if not profile_ids:
@@ -21,7 +89,7 @@ class RegistryRepository:
         async with pool.acquire() as connection:
             async with connection.cursor() as cursor:
                 await cursor.execute(
-                    "SELECT id, identity_account_id, cccd, full_name, date_of_birth, phone "
+                    f"SELECT {self.PATIENT_FIELDS} "
                     f"FROM patients WHERE id IN ({placeholders})", tuple(profile_ids),
                 )
                 rows = await cursor.fetchall()
@@ -34,7 +102,7 @@ class RegistryRepository:
             try:
                 async with connection.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT id, identity_account_id, cccd, full_name, date_of_birth, phone "
+                        f"SELECT {self.PATIENT_FIELDS} "
                         "FROM patients WHERE identity_account_id = %s",
                         (account_id,),
                     )
@@ -47,7 +115,7 @@ class RegistryRepository:
                             )
                             await connection.commit()
                             await cursor.execute(
-                                "SELECT id, identity_account_id, cccd, full_name, date_of_birth, phone "
+                                f"SELECT {self.PATIENT_FIELDS} "
                                 "FROM patients WHERE identity_account_id = %s",
                                 (account_id,),
                             )
@@ -55,7 +123,7 @@ class RegistryRepository:
                         except aiomysql.IntegrityError:
                             await connection.rollback()
                             await cursor.execute(
-                                "SELECT id, identity_account_id, cccd, full_name, date_of_birth, phone "
+                                f"SELECT {self.PATIENT_FIELDS} "
                                 "FROM patients WHERE identity_account_id = %s OR cccd = %s LIMIT 1",
                                 (account_id, cccd),
                             )
@@ -73,7 +141,7 @@ class RegistryRepository:
         async with pool.acquire() as connection:
             async with connection.cursor() as cursor:
                 await cursor.execute(
-                    "SELECT id, identity_account_id, cccd, full_name, date_of_birth, phone "
+                    f"SELECT {self.PATIENT_FIELDS} "
                     "FROM patients WHERE identity_account_id = %s AND id = %s",
                     (account_id, profile_id),
                 )
@@ -94,7 +162,7 @@ class RegistryRepository:
                 await cursor.execute(f"SELECT COUNT(*) AS total FROM patients{where}", params)
                 total = (await cursor.fetchone())["total"]
                 await cursor.execute(
-                    "SELECT id, identity_account_id, cccd, full_name, date_of_birth, phone "
+                    f"SELECT {self.PATIENT_FIELDS} "
                     f"FROM patients{where} ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s",
                     (*params, limit, offset),
                 )
@@ -105,7 +173,7 @@ class RegistryRepository:
     async def update_patient(self, account_id: str, profile_id: str, changes: dict) -> dict | None:
         if not changes:
             raise ValueError("At least one profile field is required")
-        allowed = {"full_name", "date_of_birth", "phone"}
+        allowed = {"full_name", "date_of_birth", "phone", "insurance_card_number", "insurance_category_code"}
         if not changes.keys() <= allowed:
             raise ValueError("Unsupported profile field")
         pool = await self.database.pool()
@@ -119,14 +187,21 @@ class RegistryRepository:
                     if await cursor.fetchone() is None:
                         await connection.rollback()
                         return None
+                    if changes.get("insurance_category_code") is not None:
+                        await cursor.execute("SELECT code FROM insurance_categories WHERE code = %s",
+                                             (changes["insurance_category_code"],))
+                        if await cursor.fetchone() is None:
+                            raise ProfileConflict("Unknown insurance category")
                     assignments = ", ".join(f"{field} = %s" for field in changes)
+                    if "insurance_card_number" in changes:
+                        assignments += ", insurance_verified = FALSE"
                     await cursor.execute(
                         f"UPDATE patients SET {assignments} WHERE identity_account_id = %s AND id = %s",
                         (*changes.values(), account_id, profile_id),
                     )
                     await connection.commit()
                     await cursor.execute(
-                        "SELECT id, identity_account_id, cccd, full_name, date_of_birth, phone "
+                        f"SELECT {self.PATIENT_FIELDS} "
                         "FROM patients WHERE identity_account_id = %s AND id = %s",
                         (account_id, profile_id),
                     )

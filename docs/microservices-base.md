@@ -1,8 +1,8 @@
 # Nền tảng 7 service
 
-Đây là nền tảng chuyển dần backend nguyên khối thành bảy tiến trình FastAPI độc lập. Identity có đăng ký/đăng nhập; Registry có hồ sơ và danh mục; Scheduling có lịch trực/slot/giữ chỗ; Appointment có API đặt/hủy lịch và điều phối với Scheduling. Billing, Clinical và Laboratory hiện chủ yếu là khung service và API đọc dữ liệu lịch sử. Frontend còn gọi `Backend/` cũ ở cổng 8000 cho nhiều màn hình nghiệp vụ, nên chưa có luồng khám bệnh trọn vẹn chỉ bằng Compose. Xem [hướng dẫn chạy từ đầu](../README.md).
+Hệ thống hiện chạy bảy tiến trình FastAPI độc lập bằng Docker Compose, mỗi service sở hữu một database MySQL và công bố OpenAPI riêng. Frontend gọi API của các service ở cổng 8001–8007; `Backend/` cũ và database `clinic` không tham gia runtime. Luồng E2E tổng hợp đã đi qua đăng ký, BHYT, đặt lịch, hóa đơn, check-in, khám, xét nghiệm và báo cáo. Xem [hướng dẫn chạy từ đầu](../README.md) và [kiểm thử/QoS](qos.md).
 
-| Service | Cổng local | Database riêng | Dữ liệu sẽ sở hữu |
+| Service | Cổng local | Database riêng | Dữ liệu sở hữu |
 | --- | ---: | --- | --- |
 | Identity | 8001 | `identity_db` | Tài khoản, mật khẩu băm, vai trò, phiên đăng nhập |
 | Registry | 8002 | `registry_db` | Bệnh nhân, bác sĩ, nhân viên, chi nhánh, dịch vụ, BHYT |
@@ -12,7 +12,15 @@
 | Clinical | 8006 | `clinical_db` | Lượt khám, chẩn đoán, đơn thuốc, điều trị |
 | Laboratory | 8007 | `laboratory_db` | Chỉ định xét nghiệm, kết quả |
 
-Scheduling đã có API lịch trực và giữ slot; Appointment đã có API đặt/hủy lịch phối hợp qua HTTP với Scheduling. Việc hủy/chuyển ca trực có lịch hẹn, thanh toán, khám và xét nghiệm đầu-cuối vẫn chưa hoàn tất. Xem [Scheduling](scheduling-service.md) và [Appointment](appointment-service.md).
+## Hợp đồng API và phối hợp dịch vụ
+
+Mỗi service có `/docs` và `/openapi.json`; đặt cổng theo bảng trên, ví dụ `http://127.0.0.1:8004/docs` cho Appointment. Các service gọi nhau qua HTTP có token nội bộ hoặc token Identity, không truy vấn database của service khác.
+
+- **Đặt lịch (orchestration):** Appointment giữ slot ở Scheduling, ghi lịch `pending`, xác nhận hold và chuyển `confirmed`. Nếu kết quả không chắc chắn do timeout, worker `appointment-reconciler` hỏi lại Scheduling và hoàn tất hoặc bù trừ; idempotency key chống tạo trùng. Hủy lịch giải phóng slot; nếu Billing báo `paid` thì chặn hủy cho tới khi admin hoàn tiền.
+- **Hóa đơn/BHYT:** Billing xác nhận lịch ở Appointment, lấy giá và BHYT đã xác minh qua API Registry, chụp giá/giảm trừ vào hóa đơn. Thanh toán và hoàn tiền trong phạm vi demo là giả lập, không có cổng ngân hàng. Xác minh thẻ BHYT do admin thực hiện thủ công.
+- **Khám và xét nghiệm:** Receptionist check-in lịch đã thanh toán; bác sĩ lưu lượt khám ở Clinical và chỉ định qua Laboratory. Kỹ thuật viên trả kết quả, bác sĩ hoàn tất khám; bệnh nhân xem lịch sử qua API từng service.
+
+Xem [Scheduling](scheduling-service.md), [Appointment](appointment-service.md) và [BHYT/Billing](insurance-billing.md) để biết ranh giới và quy tắc cụ thể. Chuyển/hủy ca trực đang có lịch hẹn không được thực hiện trực tiếp, tránh làm mất lịch của bệnh nhân.
 
 ## Chạy local
 
@@ -42,10 +50,6 @@ docker build --target test -t medicare-services-test ./services
 docker run --rm medicare-services-test
 ```
 
-## Bước tiếp theo
+## Giới hạn demo
 
-1. Chuyển các lời gọi frontend còn dùng `Backend/` sang API Appointment, Billing, Clinical và Laboratory mới; bảo vệ endpoint bằng Identity.
-2. Hoàn thiện thanh toán, check-in, khám và xét nghiệm cùng cơ chế bù trừ khi nhiều service phối hợp.
-3. Bổ sung metrics, SLA/QoS và kiểm thử tải cho luồng ghi; kịch bản k6 hiện có chỉ đo GET lịch trực Scheduling.
-
-Chỉ chuyển qua API/event giữa các service. Không truy vấn trực tiếp database của service khác. Backend cũ và file SQLite `Backend/hospital.db` không tham gia vào Compose này; dữ liệu MySQL Docker cũng không đi theo Git.
+[QoS](qos.md) định nghĩa mục tiêu p95 và tỷ lệ thành công cho từng service, kèm kết quả đo local; đây chưa phải SLA production. Chưa tích hợp cơ quan BHYT, ngân hàng, xử lý chuyển/hủy ca có lịch hẹn hay giám sát đa máy. Không dùng mật khẩu/secret mẫu của Compose khi triển khai thật. Dữ liệu MySQL Docker không đi theo Git; bản dump chứa dữ liệu cá nhân phải gửi riêng.
