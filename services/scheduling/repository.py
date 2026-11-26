@@ -98,7 +98,7 @@ class SchedulingRepository:
 
     async def list_schedules(self, from_date: date | None, to_date: date | None,
                              doctor_code: str | None) -> list[dict]:
-        where = []
+        where = ["s.status <> 'reserved'"]
         params = []
         if from_date:
             where.append("s.duty_date >= %s")

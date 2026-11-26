@@ -1,0 +1,47 @@
+{
+  "date": "2026-11-12",
+  "results": [
+    {
+      "case": "An and Binh display the same authoritative endocrine slot count and the correct doctor",
+      "status": "PASS",
+      "evidence": {
+        "config": "CN02_DV003",
+        "date": "2026-11-12",
+        "available": 13
+      }
+    },
+    {
+      "case": "Switching between four internal-medicine services uses independent service capacity",
+      "status": "PASS"
+    },
+    {
+      "case": "Branch and date changes cannot reuse another branch/date slot count",
+      "status": "PASS"
+    },
+    {
+      "case": "A real hold decrements availability in two independent sessions and a newly logged-in patient",
+      "status": "PASS",
+      "evidence": {
+        "available": 12
+      }
+    },
+    {
+      "case": "Releasing a hold restores availability for all patients without affecting another service",
+      "status": "PASS"
+    },
+    {
+      "case": "Scheduling failures do not display a fabricated capacity of 15; retry restores server counts",
+      "status": "PASS"
+    },
+    {
+      "case": "A full service disables booking instead of showing a local patient-dependent count",
+      "status": "PASS"
+    },
+    {
+      "case": "Treatment-session booking also uses shared Scheduling availability and returns released capacity",
+      "status": "PASS"
+    }
+  ],
+  "javascriptErrors": [],
+  "scope": "Real reads and temporary patient-owned holds, all released. No appointments/invoices/check-ins or accounts were created or changed."
+}

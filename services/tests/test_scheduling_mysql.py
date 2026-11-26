@@ -134,3 +134,87 @@ def test_concurrent_holds_only_take_one_slot(monkeypatch):
             await database.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.skipif(not os.getenv("SCHEDULING_TEST_MYSQL_PORT"),
+                    reason="Disposable MySQL instance not configured")
+def test_patient_cannot_reserve_twice_in_the_same_shift(monkeypatch):
+    monkeypatch.setenv("DB_HOST", "127.0.0.1")
+    monkeypatch.setenv("DB_PORT", os.environ["SCHEDULING_TEST_MYSQL_PORT"])
+    monkeypatch.setenv("DB_NAME", "scheduling_test_db")
+    monkeypatch.setenv("DB_USER", "root")
+    monkeypatch.setenv("DB_PASSWORD", os.environ["SCHEDULING_TEST_MYSQL_PASSWORD"])
+
+    async def run():
+        await migrate()
+        db = MySQLDatabase()
+        store = SlotRepository(db)
+        suffix = uuid4().hex[:10]
+        patient = f"patient_{suffix}"
+        day = date.today() + timedelta(days=2)
+        configs = [
+            {"MaCauHinh": f"guard_{suffix}_{i}", "MaChiNhanh": f"guard_branch_{i % 2}",
+             "MaDichVu": f"service_{i}", "SlotGioiHan": 15, "TrangThai": "active"}
+            for i in range(4)
+        ]
+        try:
+            pool = await db.pool()
+            async with pool.acquire() as connection:
+                async with connection.cursor() as cursor:
+                    await cursor.executemany(
+                        "INSERT INTO doctor_schedules (doctor_code,branch_code,duty_date,shift) "
+                        "VALUES (%s,%s,%s,%s)",
+                        [(f"guard_doc_{suffix}_{i}", config["MaChiNhanh"], target_day, shift)
+                         for i, config in enumerate(configs)
+                         for target_day, shift in [(day, 1), (day, 2), (day + timedelta(days=1), 1)]],
+                    )
+                await connection.commit()
+
+            def body(i, key, target_day=day, shift=1):
+                return HoldCreate(config_code=configs[i]["MaCauHinh"],
+                                  doctor_code=f"guard_doc_{suffix}_{i}", date=target_day,
+                                  shift=shift, idempotency_key=key)
+
+            async def attempt(i):
+                try:
+                    return await store.create_hold(body(i % 4, f"guard-request-{i}"),
+                                                   configs[i % 4], patient, 600)
+                except HoldConflict:
+                    return None
+
+            requests = await asyncio.wait_for(asyncio.gather(*(attempt(i) for i in range(20))), timeout=30)
+            winners = [r for r in requests if r]
+            assert len(winners) == 1
+            winner = winners[0]
+            index = next(i for i, c in enumerate(configs) if c["MaCauHinh"] == winner["config_code"])
+            # Same key remains idempotent, even with the new whole-shift guard.
+            retry = await store.create_hold(body(index, winner["request_key"]), configs[index], patient, 600)
+            assert retry["id"] == winner["id"]
+            await store.transition_hold(winner["id"], "confirm", appointment_id=f"guard_appt_{suffix}")
+            for i in range(4):
+                with pytest.raises(HoldConflict, match="Bạn đã có lịch hẹn"):
+                    await store.create_hold(body(i, f"after-confirm-{i}"), configs[i], patient, 600)
+            usage = [await store.availability(c["MaCauHinh"], c["MaChiNhanh"], day, 1) for c in configs]
+            assert sum(r["held"] + r["confirmed"] for r in usage) == 1
+
+            # Other patients and this patient's other days/shifts are independent.
+            other = await store.create_hold(body(index, "another-patient"), configs[index], "other_" + patient, 600)
+            next_shift = await store.create_hold(body(index, "another-shift", shift=2), configs[index], patient, 600)
+            next_day = await store.create_hold(body(index, "another-day", day + timedelta(days=1)), configs[index], patient, 600)
+            assert all(r["state"] == "held" for r in (other, next_shift, next_day))
+
+            await store.transition_hold(winner["id"], "release")
+            rebook = await store.create_hold(body(index, "after-cancellation"), configs[index], patient, 600)
+            assert rebook["state"] == "held"
+            async with pool.acquire() as connection:
+                async with connection.cursor() as cursor:
+                    await cursor.execute("UPDATE slot_holds SET expires_at=DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 SECOND) WHERE id=%s", (rebook["id"],))
+                await connection.commit()
+            after_expiry = await store.create_hold(body(index, "after-expiry"), configs[index], patient, 600)
+            assert after_expiry["id"] != rebook["id"]
+            # Migration can run again without changing business rows.
+            await migrate()
+        finally:
+            await db.close()
+
+    asyncio.run(run())

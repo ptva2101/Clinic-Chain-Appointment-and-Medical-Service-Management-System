@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from common.app import create_app
 from common.history import history_router
 from scheduling.api import router
+from scheduling.change_api import router as change_router
 from scheduling.slots import router as slot_router
 
 app = create_app(
@@ -20,5 +21,6 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Service-Token"],
 )
 app.include_router(router)
+app.include_router(change_router)
 app.include_router(slot_router)
 app.include_router(history_router("scheduling"))

@@ -21,7 +21,7 @@ class AppointmentNotFound(Exception):
 COLUMNS = (
     "id, hold_id, patient_account_id, patient_id, config_code, branch_code, "
     "service_code, doctor_code, duty_date, shift, status, source, legacy_status, "
-    "created_at, updated_at"
+    "created_at, updated_at, change_operation_id"
 )
 
 
@@ -171,6 +171,8 @@ class AppointmentRepository:
                     row = await cursor.fetchone()
                     if row is None:
                         raise AppointmentNotFound("Appointment not found")
+                    if row.get('change_operation_id'):
+                        raise AppointmentConflict('Lịch hẹn đang được hoàn tiền hoặc đổi ca.')
                     if row["status"] == next_status:
                         await connection.rollback()
                         return row
@@ -193,7 +195,7 @@ class AppointmentRepository:
                             if next_status == "confirmed" else "Lịch hẹn của bạn đã được hủy."
                         )
                         await cursor.execute(
-                            "INSERT INTO patient_notifications "
+                            "INSERT IGNORE INTO patient_notifications "
                             "(id, appointment_id, patient_account_id, patient_id, event, content) "
                             "VALUES (%s, %s, %s, %s, %s, %s)",
                             (str(uuid4()), appointment_id, row["patient_account_id"],

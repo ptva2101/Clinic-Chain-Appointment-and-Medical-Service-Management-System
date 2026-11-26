@@ -1,0 +1,10 @@
+{
+  "phase": "resume",
+  "results": [
+    {
+      "case": "Worker resumes after Billing recovers; one refund and one notification",
+      "status": "PASS",
+      "evidence": {}
+    }
+  ]
+}

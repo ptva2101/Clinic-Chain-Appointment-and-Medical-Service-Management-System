@@ -1,0 +1,23 @@
+{
+  "date": "2026-11-12",
+  "results": [
+    {
+      "case": "Admin button refunds and cancels the appointment in one confirmed action",
+      "status": "PASS"
+    },
+    {
+      "case": "Patient sees the persisted refund/cancellation notification after focus refresh",
+      "status": "PASS"
+    },
+    {
+      "case": "Booked shift can be cancelled from Admin UI and refunds its paid appointment",
+      "status": "PASS"
+    },
+    {
+      "case": "Admin transfer modal changes the booked doctor and persists the patient notification",
+      "status": "PASS"
+    }
+  ],
+  "javascriptErrors": [],
+  "scope": "All API calls routed to isolated clinic-refund-test; main data unchanged"
+}

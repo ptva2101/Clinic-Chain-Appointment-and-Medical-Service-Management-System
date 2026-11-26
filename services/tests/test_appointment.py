@@ -59,6 +59,9 @@ class MemoryScheduling:
 class MemoryBilling:
     status = None
 
+    async def cancel_unpaid(self, appointment_id):
+        return {'refunded_amount':0}
+
     async def payment_status(self, _appointment_id):
         return self.status
 

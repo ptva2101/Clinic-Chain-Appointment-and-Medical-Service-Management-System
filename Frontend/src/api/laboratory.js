@@ -18,6 +18,7 @@ const toLegacyRow = (row) => ({
   PaymentToken: row.payment_token || '',
   KetQuaXetNghiem: row.result_text || '',
   MaXNV: row.technician_code || '',
+  TenXNV: row.technician_name_snapshot || '',
   HoTen: row.patient_name || 'Chưa cập nhật',
   SDT: row.patient_phone || '',
   TrangThaiXetNghiem: row.status === 'resulted' ? 'Đã có kết quả' : 'Chưa thực hiện',

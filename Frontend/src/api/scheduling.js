@@ -20,13 +20,15 @@ export const getDoctorScheduleImpact = (accessToken, id) =>
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 
-export const getSchedulingAvailability = ({ configCode, doctorCode, date, shift }) =>
-  request(`/availability?${new URLSearchParams({
+export const getSchedulingAvailability = ({ configCode, doctorCode, date, shift, signal }) => {
+  const query = new URLSearchParams({
     config_code: configCode,
-    doctor_code: doctorCode,
     date,
     shift: String(shift),
-  })}`)
+  })
+  if (doctorCode) query.set('doctor_code', doctorCode)
+  return request(`/availability?${query}`, { signal })
+}
 
 export const createDoctorSchedules = (accessToken, schedules) =>
   request('/doctor-schedules/bulk', {

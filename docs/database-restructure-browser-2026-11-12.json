@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-12",
+  "results": [
+    {
+      "case": "Patient can select original DV001, CN01, ca 1 and LEGACY_BS001",
+      "status": "PASS"
+    },
+    {
+      "case": "Patient sees eight specialties, 15 exam services and correct doctor at CN02",
+      "status": "PASS"
+    },
+    {
+      "case": "Doctor signs in and schedule shows both original branches",
+      "status": "PASS"
+    },
+    {
+      "case": "Receptionist LEGACY_LT001 opens the correct branch",
+      "status": "PASS"
+    },
+    {
+      "case": "Receptionist LEGACY_LT002 opens the correct branch",
+      "status": "PASS"
+    },
+    {
+      "case": "Laboratory technician LEGACY_XNV001 opens the correct branch",
+      "status": "PASS"
+    },
+    {
+      "case": "Laboratory technician LEGACY_XNV003 opens the correct branch",
+      "status": "PASS"
+    },
+    {
+      "case": "Admin catalogue shows only two retained branches",
+      "status": "PASS"
+    }
+  ],
+  "javascriptErrors": [],
+  "serverErrors": [],
+  "verification": "Read-only UI: no booking, payment or clinical changes submitted"
+}

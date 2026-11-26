@@ -1,0 +1,38 @@
+{
+  "database_api_equal": true,
+  "counts": {
+    "accounts": 56,
+    "staff": 37,
+    "patients": 17
+  },
+  "account_roles": {
+    "admin": 2,
+    "patient": 17,
+    "doctor": 33,
+    "letan": 2,
+    "xnv": 2
+  },
+  "active_account_roles": {
+    "admin": 2,
+    "patient": 4,
+    "doctor": 33,
+    "letan": 2,
+    "xnv": 2
+  },
+  "locked_account_roles": {
+    "patient": 13
+  },
+  "pending_accounts": 0,
+  "staff_roles": {
+    "xnv": 2,
+    "letan": 2,
+    "doctor": 33
+  },
+  "staff_branches": {
+    "CN02": 2,
+    "CN01": 2,
+    "(none)": 33
+  },
+  "linkage_issues": [],
+  "scope": "Read-only account/profile audit; login sessions logged out. No business data modified."
+}

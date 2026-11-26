@@ -1,0 +1,169 @@
+{
+  "executed_at": "2026-11-09T18:22:39.455921+07:00",
+  "environment": "isolated Compose project; synthetic fixtures; service APIs only",
+  "prefix": "T0B9B14BC",
+  "results": [
+    {
+      "case": "7 service công bố OpenAPI và readiness",
+      "status": "PASS",
+      "evidence": {
+        "identity": 15,
+        "registry": 25,
+        "scheduling": 14,
+        "appointment": 17,
+        "billing": 12,
+        "clinical": 15,
+        "laboratory": 10
+      }
+    },
+    {
+      "case": "Đổi mật khẩu, thu hồi token và khôi phục tài khoản test",
+      "status": "PASS",
+      "evidence": {
+        "old_token": 401,
+        "old_password": 401,
+        "new_password": 200,
+        "restored": true
+      }
+    },
+    {
+      "case": "Phân quyền và xác thực API",
+      "status": "PASS",
+      "evidence": {
+        "unauthenticated": 401,
+        "unauthorized_roles": [
+          403,
+          403,
+          403,
+          403
+        ]
+      }
+    },
+    {
+      "case": "Hủy lịch chưa thanh toán trả lại chỗ",
+      "status": "PASS",
+      "evidence": {
+        "available_before": 3,
+        "during": 2,
+        "after": 3
+      }
+    },
+    {
+      "case": "BHYT chưa/đã xác minh, chụp giá và chống đặt trùng",
+      "status": "PASS",
+      "evidence": {
+        "unverified_amount": 150000,
+        "verified_amount": 30000,
+        "discount": 120000,
+        "snapshot_immutable": true,
+        "booking_idempotent": true
+      }
+    },
+    {
+      "case": "Bệnh nhân không đọc hoặc thanh toán hóa đơn người khác",
+      "status": "PASS",
+      "evidence": {
+        "other_patient_appointment": 404,
+        "other_patient_invoice": 404,
+        "other_patient_payment": 404
+      }
+    },
+    {
+      "case": "Thanh toán giả lập lặp lại và chặn hủy lịch đã trả tiền",
+      "status": "PASS",
+      "evidence": {
+        "payment_status": "paid",
+        "repeat_same_transaction": true,
+        "paid_cancellation": 409
+      }
+    },
+    {
+      "case": "Admin hoàn tiền, không hoàn trùng và hủy sau hoàn tiền",
+      "status": "PASS",
+      "evidence": {
+        "patient_refund": 403,
+        "admin_refund": "refunded",
+        "repeat_same_refund": true,
+        "after_refund": "cancelled"
+      }
+    },
+    {
+      "case": "Ca hết chỗ và 2 yêu cầu đồng thời tranh chỗ cuối",
+      "status": "PASS",
+      "evidence": {
+        "last_slot_competitors": 2,
+        "responses": [
+          201,
+          409
+        ],
+        "full_slot": 409,
+        "restored_available": 3
+      }
+    },
+    {
+      "case": "Chuyển/hủy ca trống và chặn thay đổi ca đã có lịch",
+      "status": "PASS",
+      "evidence": {
+        "empty_transfer": 200,
+        "empty_cancel": "Đã hủy",
+        "occupied_change": 409
+      }
+    },
+    {
+      "case": "Tiếp đón → khám → xét nghiệm → kết luận, đơn thuốc và bệnh sử",
+      "status": "PASS",
+      "evidence": {
+        "duplicate_check_in": 409,
+        "premature_conclusion": 409,
+        "lab_result": "resulted",
+        "encounter": "completed",
+        "immutable": 409
+      }
+    },
+    {
+      "case": "Đặt buổi điều trị, tạo hóa đơn, hoàn tất buổi và chống đặt vượt phác đồ",
+      "status": "PASS",
+      "evidence": {
+        "first_session": "completed",
+        "second_session": "booked",
+        "amount_due": 20000,
+        "beyond_plan": 409,
+        "idempotent": true
+      }
+    },
+    {
+      "case": "Báo cáo chi nhánh/bác sĩ/dịch vụ, giảm trừ BHYT và loại tiền đã hoàn",
+      "status": "PASS",
+      "evidence": {
+        "branch": {
+          "code": "CN_T0B9B14BC",
+          "revenue": 50000,
+          "insurance_discount": 200000
+        },
+        "doctor": {
+          "code": "T0B9B14BC_BS_NOI",
+          "revenue": 50000,
+          "insurance_discount": 200000
+        },
+        "service": {
+          "code": "T0B9B14BC_KHAM",
+          "revenue": 30000,
+          "insurance_discount": 120000
+        }
+      }
+    },
+    {
+      "case": "Thông báo đặt lịch và đánh dấu đã đọc",
+      "status": "PASS",
+      "evidence": {
+        "notifications": 15,
+        "all_read": true
+      }
+    }
+  ],
+  "summary": {
+    "PASS": 14,
+    "FAIL": 0,
+    "SKIP": 0
+  }
+}

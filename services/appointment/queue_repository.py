@@ -74,7 +74,7 @@ class QueueRepository:
             try:
                 async with connection.cursor() as cursor:
                     await cursor.execute(
-                        "SELECT id, branch_code, doctor_code, duty_date, status "
+                        "SELECT id, branch_code, doctor_code, duty_date, status, change_operation_id "
                         "FROM appointments WHERE id = %s FOR UPDATE", (appointment_id,),
                     )
                     appointment = await cursor.fetchone()
@@ -82,7 +82,7 @@ class QueueRepository:
                         raise QueueNotFound("Appointment not found")
                     if appointment["branch_code"] != branch_code:
                         raise QueueNotFound("Appointment not found in this branch")
-                    if appointment["status"] != "confirmed" or appointment["duty_date"] != today:
+                    if appointment["status"] != "confirmed" or appointment["duty_date"] != today or appointment.get('change_operation_id'):
                         raise QueueConflict("Only today's confirmed appointments can be checked in")
                     await cursor.execute(
                         "SELECT appointment_id FROM appointment_checkins WHERE appointment_id = %s",

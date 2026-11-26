@@ -1,0 +1,34 @@
+{
+  "results": [
+    {
+      "case": "Real CN02 queue for LEGACY_BS002 displays Trần Thị Bình and Nội khoa from Registry",
+      "status": "PASS"
+    },
+    {
+      "case": "CN01 queue headers ignore stale schedule names and match each of two Registry doctor profiles",
+      "status": "PASS"
+    },
+    {
+      "case": "CN02 queue headers ignore stale schedule names and match each of two Registry doctor profiles",
+      "status": "PASS"
+    },
+    {
+      "case": "Patient UI blocks a duplicate shift even after changing service; another shift remains bookable",
+      "status": "PASS"
+    },
+    {
+      "case": "Real Appointment and Scheduling APIs reject duplicates with HTTP 409 across services/branches; no new booking or slot consumption",
+      "status": "PASS"
+    },
+    {
+      "case": "Retrying the original idempotency key returns the original appointment without consuming another slot",
+      "status": "PASS"
+    },
+    {
+      "case": "Another patient can still select the same service/date/shift",
+      "status": "PASS"
+    }
+  ],
+  "javascriptErrors": [],
+  "scope": "Real read-only queues; browser-only mocked stale schedule headers/multiple queues; negative duplicate API calls and idempotent replay only. No appointment/invoice/check-in changed."
+}

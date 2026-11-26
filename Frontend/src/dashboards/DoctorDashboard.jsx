@@ -4,7 +4,7 @@ import { EMPTY_CATALOG_DATA } from '../shared/catalog.js'
 import { getDoctorQueue, updateAppointmentStatus } from '../api/appointment.js'
 import { completeAppointment, completeTreatmentSession, getCompletedEncounters, getDoctorPatientHistory, getEncounterDetail } from '../api/clinical.js'
 import TablePagination from './TablePagination.jsx'
-import { getPageRows } from './tablePagination.js'
+import { getCurrentPage, getPageRows, TABLE_PAGE_SIZE } from './tablePagination.js'
 
 export default function DoctorDashboard({ user, identityAccessToken, onLogout, onChangePassword, showNotification, catalogData = EMPTY_CATALOG_DATA }) {
   const [doctorProfile, setDoctorProfile] = useState({
@@ -174,6 +174,7 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
         TenDichVu: item.TenDichVu,
         TongSoBuoi: 0,
         SoBuoiDaLam: 0,
+        CoBuoiDaDat: false,
         TrangThai: item.TrangThai || 'Chưa đặt lịch',
       }
 
@@ -181,11 +182,17 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
       if (item.TrangThai === 'Hoàn thành') {
         current.SoBuoiDaLam += 1
       }
+      if (item.TrangThai === 'Đã đặt lịch') current.CoBuoiDaDat = true
       currentMap[key] = current
       return currentMap
     }, {})
 
-    return Object.values(treatmentMap)
+    return Object.values(treatmentMap).map((treatment) => ({
+      ...treatment,
+      TrangThai: treatment.SoBuoiDaLam === treatment.TongSoBuoi ? 'Hoàn thành'
+        : treatment.SoBuoiDaLam > 0 ? 'Đang thực hiện'
+          : treatment.CoBuoiDaDat ? 'Đã đặt lịch' : treatment.TrangThai,
+    }))
   }
   const mergeDoctorHistoryRows = (rows) => {
     const historyRows = Array.isArray(rows) ? rows : []
@@ -290,8 +297,13 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
         throw new Error(result?.message || 'Không thể tải hàng đợi bác sĩ.')
       }
 
-      setDoctorLiveRows(Array.isArray(result.data) ? result.data.map(normalizeDoctorBooking) : [])
+      const rows = Array.isArray(result.data) ? result.data.map(normalizeDoctorBooking) : []
+      setDoctorLiveRows(rows)
       setHasLoadedDoctorQueue(true)
+      const patientsWithSavedEncounters = [...new Set(
+        rows.filter((booking) => booking.MaLuotKham).map((booking) => booking.MaBenhAn),
+      )]
+      await Promise.all(patientsWithSavedEncounters.map(loadPatientHistoryForDoctor))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể tải hàng đợi bác sĩ.'
       setDoctorQueueError(message)
@@ -365,8 +377,9 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     return () => window.clearTimeout(timer)
   }, [doctorProfile.MaBacSi, identityAccessToken])
 
-  const labServices = effectiveServices.filter((service) => service.LoaiDichVu === 'Xét nghiệm')
-  const treatmentServices = effectiveServices.filter((service) => service.LoaiDichVu === 'Điều trị')
+  const labServices = effectiveServices.filter((service) => service.LoaiDichVu === 'Xét nghiệm' && service.TrangThai === 'active')
+  const treatmentServices = effectiveServices.filter((service) => service.LoaiDichVu === 'Điều trị'
+    && service.TrangThai === 'active' && service.ChuyenKhoa === doctorProfile.ChuyenKhoa)
   const selectedLabServiceId = labServices.some((service) => service.MaDichVu === clinicalForm.MaXetNghiem)
     ? clinicalForm.MaXetNghiem
     : labServices[0]?.MaDichVu || ''
@@ -467,6 +480,9 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
   const currentTreatments = activeBooking
     ? treatmentSchedules.filter((item) => item.MaLuotKham === currentVisitId)
     : []
+  const canEditCurrentTreatments = activeBooking
+    && ['Đang khám', 'Chờ kết luận'].includes(activeBooking.TrangThai)
+    && activeBooking.LoaiDichVu !== 'Điều trị'
   const activeTreatmentSession = activeBooking
     ? treatmentSchedules.find((item) => item.MaLichHen === activeBooking.MaLichHen)
     : null
@@ -481,7 +497,7 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     : []
   const activeTreatmentCompletedCount = activeTreatmentSiblings.filter((item) => item.TrangThai === 'Hoàn thành').length
   const waitingConclusionBookings = doctorSourceBookings
-    .filter((booking) => booking.TrangThai === 'Chờ kết luận' && isDoctorOwnedBooking(booking))
+    .filter((booking) => ['Đang khám', 'Chờ kết luận'].includes(booking.TrangThai) && isDoctorOwnedBooking(booking))
     .sort((a, b) => Number(a.STT_HangDoi || 0) - Number(b.STT_HangDoi || 0))
   const allCurrentLabResultsReady =
     currentLabOrders.length === 0 ||
@@ -662,6 +678,30 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     }
   }
 
+  const restoreExamForm = (data = null) => {
+    const visit = data?.LuotKham
+    setClinicalForm({
+      TrieuChung: visit?.TrieuChung || '',
+      MaBenh: visit?.MaBenh || '',
+      LoiDan: visit?.LoiDan || '',
+      MaThuoc: '',
+      SoLuong: '10',
+      LieuDung: '',
+      MaXetNghiem: '',
+      MaDieuTri: '',
+      TongSoBuoi: '3',
+    })
+    setDiagnosisSearch(visit?.MaBenh
+      ? `${visit.MaBenh} - ${getDisease(visit.MaBenh).TenBenh}` : '')
+    setMedicineSearch('')
+    setCurrentPrescription((data?.DonThuoc || []).map((item, index) => ({
+      TempId: item.MaDonThuoc || `RESTORED_RX_${index}`,
+      MaThuoc: item.MaThuoc,
+      SoLuong: item.SoLuong,
+      LieuDung: item.LieuDung || '',
+    })))
+  }
+
   const loadEncounterDetail = async (maLuotKham) => {
     if (!maLuotKham) return null
 
@@ -677,6 +717,7 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     }
 
     mergeEncounterDetail(result.data)
+    restoreExamForm(result.data)
     return result.data
   }
 
@@ -689,7 +730,10 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     const result = await response.json()
 
     if (!response.ok || !result?.success) {
-      throw new Error(result?.message || 'Không thể lưu lượt khám.')
+      const unavailableLab = result?.message?.match(/^Laboratory service (.+) is unavailable$/)
+      throw new Error(unavailableLab
+        ? `Dịch vụ ${getService(unavailableLab[1]).TenDichVu} (${unavailableLab[1]}) không khả dụng. Hãy bỏ chỉ định chưa gửi và chọn dịch vụ đang hoạt động.`
+        : result?.message || 'Không thể lưu lượt khám.')
     }
 
     return result.data
@@ -704,7 +748,6 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
       }
 
       updateLocalDoctorBooking(booking.MaLichHen, { TrangThai: 'Đang khám' })
-      setActiveBookingId(booking.MaLichHen)
       const loadedHistory = await loadPatientHistoryForDoctor(booking.MaBenhAn)
       if (booking.MaLuotKham) {
         await loadEncounterDetail(booking.MaLuotKham)
@@ -715,8 +758,10 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
         .filter((visit) => visit.MaBenhAn === booking.MaBenhAn)
         .sort((a, b) => b.NgayKham.localeCompare(a.NgayKham))
       if (!booking.MaLuotKham) {
+        restoreExamForm()
         setSelectedVisitId(patientHistoricalVisits[0]?.MaLuotKham || '')
       }
+      setActiveBookingId(booking.MaLichHen)
       notify(`Đã mời ${getPatient(booking.MaBenhAn).HoTen} vào khám.`)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể mời bệnh nhân vào khám.'
@@ -798,8 +843,13 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
       return
     }
 
+    if (currentLabOrders.some((lab) => lab.MaDichVu === selectedLabServiceId)) {
+      notify('Dịch vụ xét nghiệm này đã có trong chỉ định của lượt khám.', 'error')
+      return
+    }
+
     const newLabOrder = {
-      MaChiTietXN: `CTXN_DR_${String(labDetails.length + 1).padStart(3, '0')}`,
+      MaChiTietXN: `CTXN_DR_${crypto.randomUUID()}`,
       MaLuotKham: currentVisitId,
       MaDichVu: selectedLabServiceId,
       KetQuaXetNghiem: '',
@@ -811,7 +861,14 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     notify(`Đã thêm chỉ định ${getService(selectedLabServiceId).TenDichVu}.`)
   }
 
+  const handleRemoveUnsentLabOrder = (labId) => {
+    if (savingExam || !String(labId).startsWith('CTXN_DR_')) return
+    setLabDetails((current) => current.filter((lab) =>
+      lab.MaChiTietXN !== labId || lab.MaLuotKham !== currentVisitId))
+  }
+
   const handleAddTreatmentPlan = () => {
+    if (savingExam) return
     if (!activeBooking) {
       notify('Vui lòng mời bệnh nhân vào khám trước khi chỉ định điều trị.', 'error')
       return
@@ -822,6 +879,11 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
       return
     }
 
+    if (currentTreatments.some((item) => item.MaDichVu === selectedTreatmentServiceId)) {
+      notify('Dịch vụ điều trị này đã có trong chỉ định của lượt khám.', 'error')
+      return
+    }
+
     const totalSessions = Number(clinicalForm.TongSoBuoi)
     if (!Number.isInteger(totalSessions) || totalSessions <= 0) {
       notify('Tổng số buổi điều trị phải là số nguyên dương.', 'error')
@@ -829,7 +891,7 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     }
 
     const newTreatment = {
-      MaLichTrinh: `LTDT_DR_${String(treatmentSchedules.length + 1).padStart(3, '0')}`,
+      MaLichTrinh: `LTDT_DR_${crypto.randomUUID()}`,
       MaLuotKham: currentVisitId,
       MaDichVu: selectedTreatmentServiceId,
       TongSoBuoi: totalSessions,
@@ -838,6 +900,14 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     }
     setTreatmentSchedules((current) => [...current, newTreatment])
     notify(`Đã chỉ định liệu trình ${getService(selectedTreatmentServiceId).TenDichVu}.`)
+  }
+
+  const handleRemoveTreatmentPlan = (scheduleId) => {
+    if (savingExam || !canEditCurrentTreatments) return
+    const item = currentTreatments.find((entry) => entry.MaLichTrinh === scheduleId)
+    if (!item || item.SoBuoiDaLam > 0 || item.CoBuoiDaDat || item.MaLichHen) return
+    setTreatmentSchedules((current) => current.filter((entry) =>
+      entry.MaLichTrinh !== scheduleId || entry.MaLuotKham !== currentVisitId))
   }
 
   const handlePauseForLab = async () => {
@@ -871,25 +941,31 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
     setDoctorActionLoading(booking.MaLichHen)
 
     try {
-      if (hasLoadedDoctorQueue && !String(booking.MaLichHen).startsWith('LH_DR_')) {
+      if (booking.TrangThai !== 'Đang khám' && hasLoadedDoctorQueue && !String(booking.MaLichHen).startsWith('LH_DR_')) {
         await updateDoctorBookingStatus(booking.MaLichHen, 'Đang khám')
       }
 
       updateLocalDoctorBooking(booking.MaLichHen, { TrangThai: 'Đang khám' })
-      setActiveBookingId(booking.MaLichHen)
       const loadedHistory = await loadPatientHistoryForDoctor(booking.MaBenhAn)
-      if (booking.MaLuotKham) {
-        await loadEncounterDetail(booking.MaLuotKham)
-        setSelectedVisitId(booking.MaLuotKham)
+      const savedBooking = loadedHistory.nextBookings.find((item) => item.MaLichHen === booking.MaLichHen)
+      const encounterId = booking.MaLuotKham || savedBooking?.MaLuotKham
+      if (encounterId) {
+        await loadEncounterDetail(encounterId)
+        updateLocalDoctorBooking(booking.MaLichHen, { MaLuotKham: encounterId })
+        setSelectedVisitId(encounterId)
       }
       const historySource = loadedHistory.nextVisits.length > 0 ? loadedHistory.nextVisits : visitRecords
       const patientHistoricalVisits = historySource
         .filter((visit) => visit.MaBenhAn === booking.MaBenhAn)
         .sort((a, b) => b.NgayKham.localeCompare(a.NgayKham))
-      if (!booking.MaLuotKham) {
+      if (!encounterId) {
+        restoreExamForm()
         setSelectedVisitId(patientHistoricalVisits[0]?.MaLuotKham || '')
       }
-      notify(`Đã gọi lại ${getPatient(booking.MaBenhAn).HoTen} vào phòng để kết luận.`)
+      setActiveBookingId(booking.MaLichHen)
+      notify(booking.TrangThai === 'Đang khám'
+        ? `Đã mở lại hồ sơ đang khám của ${getPatient(booking.MaBenhAn).HoTen}.`
+        : `Đã gọi lại ${getPatient(booking.MaBenhAn).HoTen} vào phòng để kết luận.`)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể gọi lại bệnh nhân.'
       notify(message, 'error')
@@ -1038,7 +1114,7 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
           <div className="doctor-section-header">
             <div>
               <h2>Danh sách bệnh nhân đang chờ</h2>
-              <p>Hàng đợi lọc theo bác sĩ và chi nhánh đang đăng nhập.</p>
+              <p>Hàng đợi lọc theo bác sĩ và chi nhánh đang đăng nhập. Số phiếu do lễ tân cấp được giữ nguyên trong ngày.</p>
             </div>
             <strong>{doctorQueue.length} ca chờ</strong>
           </div>
@@ -1046,7 +1122,8 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
             <table className="doctor-table">
               <thead>
                 <tr>
-                  <th>STT hàng đợi</th>
+                  <th>Thứ tự trong danh sách</th>
+                  <th>Số phiếu trong ngày</th>
                   <th>Họ tên</th>
                   <th>Ca khám</th>
                   <th>Dịch vụ đăng ký</th>
@@ -1055,11 +1132,12 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
                 </tr>
               </thead>
               <tbody>
-                {getPageRows(doctorQueue, queuePage).map((booking) => {
+                {getPageRows(doctorQueue, queuePage).map((booking, index) => {
                   const patient = getPatient(booking.MaBenhAn)
                   const service = getService(booking.MaDichVu)
                   return (
                     <tr key={booking.MaLichHen}>
+                      <td>{getCurrentPage(queuePage, doctorQueue.length) * TABLE_PAGE_SIZE + index + 1}</td>
                       <td>{booking.STT_HangDoi}</td>
                       <td>
                         <strong>{patient.HoTen}</strong>
@@ -1083,7 +1161,7 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
                 })}
                 {doctorQueue.length === 0 && (
                   <tr>
-                    <td colSpan="6" className="doctor-empty-cell">
+                    <td colSpan="7" className="doctor-empty-cell">
                       Không còn bệnh nhân nào đang chờ bác sĩ.
                     </td>
                   </tr>
@@ -1098,30 +1176,33 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
       <section className="doctor-card">
         <div className="doctor-section-header">
           <div>
-            <h2>Danh sách chờ kết luận</h2>
-            <p>Bệnh nhân đã khám vòng 1 và đang chờ đủ kết quả cận lâm sàng.</p>
+            <h2>Đang khám / Chờ kết luận</h2>
+            <p>Mở lại ca đang khám sau khi tải lại trang, hoặc gọi bệnh nhân chờ kết quả vào kết luận.</p>
           </div>
-          <strong>{waitingConclusionBookings.length} ca chờ kết luận</strong>
+          <strong>{waitingConclusionBookings.length} ca chưa hoàn tất</strong>
         </div>
         <div className="doctor-table-wrap">
           <table className="doctor-table">
             <thead>
               <tr>
-                <th>STT</th>
+                <th>Thứ tự trong danh sách</th>
+                <th>Số phiếu trong ngày</th>
                 <th>Họ tên</th>
                 <th>Ca khám</th>
                 <th>Dịch vụ</th>
+                <th>Trạng thái</th>
                 <th>Trạng thái xét nghiệm</th>
                 <th>Hành động</th>
               </tr>
             </thead>
             <tbody>
-              {getPageRows(waitingConclusionBookings, conclusionPage).map((booking) => {
+              {getPageRows(waitingConclusionBookings, conclusionPage).map((booking, index) => {
                 const patient = getPatient(booking.MaBenhAn)
                 const currentLabs = labDetails.filter((lab) => lab.MaLuotKham === buildCurrentVisitId(booking))
                 const readyCount = currentLabs.filter((lab) => lab.TrangThaiXetNghiem === 'Đã có kết quả').length
                 return (
                   <tr key={booking.MaLichHen}>
+                    <td>{getCurrentPage(conclusionPage, waitingConclusionBookings.length) * TABLE_PAGE_SIZE + index + 1}</td>
                     <td>{booking.STT_HangDoi}</td>
                     <td>
                       <strong>{patient.HoTen}</strong>
@@ -1129,8 +1210,11 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
                     </td>
                     <td>Ca {booking.CaKham}</td>
                     <td>{booking.TenDichVu || getService(booking.MaDichVu).TenDichVu}</td>
+                    <td>{booking.TrangThai}</td>
                     <td>
-                      {readyCount}/{currentLabs.length} kết quả
+                      {booking.MaLuotKham && !visitRecords.some((visit) => visit.MaLuotKham === booking.MaLuotKham)
+                        ? 'Đang tải kết quả...'
+                        : `${readyCount}/${currentLabs.length} kết quả`}
                     </td>
                     <td>
                       <button
@@ -1139,7 +1223,8 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
                         disabled={doctorActionLoading === booking.MaLichHen}
                         onClick={() => handleRecallPatient(booking)}
                       >
-                        {doctorActionLoading === booking.MaLichHen ? 'Đang gọi...' : 'Gọi lại vào phòng'}
+                        {doctorActionLoading === booking.MaLichHen ? 'Đang mở...'
+                          : booking.TrangThai === 'Đang khám' ? 'Tiếp tục khám' : 'Gọi lại vào phòng'}
                       </button>
                     </td>
                   </tr>
@@ -1147,15 +1232,15 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
               })}
               {waitingConclusionBookings.length === 0 && (
                 <tr>
-                  <td colSpan="6" className="doctor-empty-cell">
-                    Không có bệnh nhân đang chờ kết luận.
+                  <td colSpan="8" className="doctor-empty-cell">
+                    Không có bệnh nhân đang khám hoặc chờ kết luận.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        <TablePagination page={conclusionPage} total={waitingConclusionBookings.length} label="ca chờ kết luận" onPageChange={setConclusionPage} />
+        <TablePagination page={conclusionPage} total={waitingConclusionBookings.length} label="ca chưa hoàn tất" onPageChange={setConclusionPage} />
       </section>
 
       <section className="doctor-card">
@@ -1247,7 +1332,7 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
                       <select
                         value={selectedLabServiceId}
                         onChange={(event) => handleClinicalFormChange('MaXetNghiem', event.target.value)}
-                        disabled={labServices.length === 0}
+                        disabled={savingExam || labServices.length === 0}
                       >
                         {labServices.length === 0 && <option value="">Không có dịch vụ xét nghiệm</option>}
                         {labServices.map((service) => (
@@ -1256,7 +1341,7 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
                           </option>
                         ))}
                       </select>
-                      <button type="button" className="doctor-secondary-button" onClick={handleAddLabOrder}>
+                      <button type="button" className="doctor-secondary-button" onClick={handleAddLabOrder} disabled={savingExam || labServices.length === 0}>
                         Thêm chỉ định CLS
                       </button>
                     </div>
@@ -1270,6 +1355,16 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
                               : 'Chờ phòng Lab/Thanh toán'}
                           </strong>
                           <p>{lab.KetQuaXetNghiem || 'Chưa có kết quả từ phòng Lab.'}</p>
+                          {String(lab.MaChiTietXN).startsWith('CTXN_DR_') && (
+                            <button
+                              type="button"
+                              className="doctor-secondary-button"
+                              onClick={() => handleRemoveUnsentLabOrder(lab.MaChiTietXN)}
+                              disabled={savingExam}
+                            >
+                              Bỏ chỉ định chưa gửi
+                            </button>
+                          )}
                         </article>
                       ))}
                       {currentLabOrders.length === 0 && (
@@ -1416,7 +1511,7 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
                       <select
                         value={selectedTreatmentServiceId}
                         onChange={(event) => handleClinicalFormChange('MaDieuTri', event.target.value)}
-                        disabled={treatmentServices.length === 0}
+                        disabled={savingExam || !canEditCurrentTreatments || treatmentServices.length === 0}
                       >
                         {treatmentServices.length === 0 && <option value="">Không có dịch vụ điều trị</option>}
                         {treatmentServices.map((service) => (
@@ -1429,10 +1524,11 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
                         type="number"
                         min="1"
                         value={clinicalForm.TongSoBuoi}
+                        disabled={savingExam || !canEditCurrentTreatments}
                         onChange={(event) => handleClinicalFormChange('TongSoBuoi', event.target.value)}
                         aria-label="Tổng số buổi chỉ định"
                       />
-                      <button type="button" className="doctor-secondary-button" onClick={handleAddTreatmentPlan}>
+                      <button type="button" className="doctor-secondary-button" onClick={handleAddTreatmentPlan} disabled={savingExam || !canEditCurrentTreatments || treatmentServices.length === 0}>
                         ➕ Xác nhận chỉ định điều trị
                       </button>
                     </div>
@@ -1443,6 +1539,17 @@ export default function DoctorDashboard({ user, identityAccessToken, onLogout, o
                           <span>
                             {item.SoBuoiDaLam}/{item.TongSoBuoi} buổi - {item.TrangThai}
                           </span>
+                          {canEditCurrentTreatments && !item.SoBuoiDaLam && !item.CoBuoiDaDat && !item.MaLichHen && (
+                            <button
+                              type="button"
+                              className="doctor-secondary-button"
+                              onClick={() => handleRemoveTreatmentPlan(item.MaLichTrinh)}
+                              disabled={savingExam}
+                              aria-label={`Xóa chỉ định ${getService(item.MaDichVu).TenDichVu}`}
+                            >
+                              Xóa chỉ định
+                            </button>
+                          )}
                         </article>
                       ))}
                       {currentTreatments.length === 0 && (

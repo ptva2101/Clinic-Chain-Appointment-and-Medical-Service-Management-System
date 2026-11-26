@@ -127,7 +127,11 @@ async def availability(
     )
 
 
-@router.post("/holds", response_model=HoldResponse)
+@router.post("/holds", response_model=HoldResponse,
+             description="Mỗi bệnh nhân chỉ được giữ/đặt một lịch trong cùng ngày và ca, "
+                         "kể cả khi chọn dịch vụ, bác sĩ hoặc chi nhánh khác. "
+                         "Gửi lại cùng idempotency key trả về giữ chỗ cũ.",
+             responses={409: {"description": "Trùng ca khám, hết chỗ hoặc xung đột giữ chỗ."}})
 async def create_hold(body: HoldCreate, repository: SlotStore, registry: Registry,
                       patient: Patient) -> HoldResponse:
     if body.date < today_vietnam():

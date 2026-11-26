@@ -1,0 +1,78 @@
+{
+  "executed_at": "2026-11-09T11:29:26.208Z",
+  "scope": "Read-only browser smoke of synthetic demo accounts; not full UI E2E",
+  "results": [
+    {
+      "role": "admin",
+      "username": "demo_admin",
+      "status": "PASS",
+      "pages": [
+        "staff",
+        "catalog",
+        "schedules",
+        "billing",
+        "reports"
+      ],
+      "javascriptErrors": [],
+      "httpErrors": []
+    },
+    {
+      "role": "patient",
+      "username": "990000000001",
+      "status": "PASS",
+      "pages": [
+        "booking",
+        "appointments",
+        "profile",
+        "history",
+        "treatments"
+      ],
+      "javascriptErrors": [],
+      "httpErrors": []
+    },
+    {
+      "role": "patient",
+      "username": "990000000002",
+      "status": "PASS",
+      "pages": [
+        "booking",
+        "appointments",
+        "profile",
+        "history",
+        "treatments"
+      ],
+      "completedReferenceHistory": true,
+      "javascriptErrors": [],
+      "httpErrors": []
+    },
+    {
+      "role": "doctor",
+      "username": "demo_doctor",
+      "status": "PASS",
+      "javascriptErrors": [],
+      "httpErrors": []
+    },
+    {
+      "role": "doctor",
+      "username": "demo_backup",
+      "status": "PASS",
+      "javascriptErrors": [],
+      "httpErrors": []
+    },
+    {
+      "role": "letan",
+      "username": "demo_reception",
+      "status": "PASS",
+      "delayedBranchCatalogueMs": 1500,
+      "javascriptErrors": [],
+      "httpErrors": []
+    },
+    {
+      "role": "xnv",
+      "username": "demo_lab",
+      "status": "PASS",
+      "javascriptErrors": [],
+      "httpErrors": []
+    }
+  ]
+}

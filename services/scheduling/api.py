@@ -10,6 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from common.identity_client import IdentityClient, IdentityUnavailable, InvalidIdentityToken
 from scheduling.registry_client import InvalidScheduleReference, RegistryClient, RegistryUnavailable
 from scheduling.repository import ScheduleConflict, SchedulingRepository
+from scheduling.change_repository import ScheduleChanges
+from common.change_http import call_change, ChangeRejected, ChangeUnavailable
+from urllib.parse import urlencode
 
 
 router = APIRouter(prefix="/api/v1/scheduling", tags=["Doctor schedules"])
@@ -62,6 +65,8 @@ class ScheduleImpact(BaseModel):
     confirmed_appointments: int
     active_holds: int
     can_change: bool
+    checked_in: int = 0
+    pending: int = 0
 
 
 class TransferScheduleRequest(BaseModel):
@@ -75,7 +80,8 @@ def to_response(row: dict) -> ScheduleResponse:
         MaBacSi=row["doctor_code"], MaChiNhanh=row["branch_code"],
         NgayTruc=row["duty_date"], CaTruc=row["shift"],
         TrangThai=("Đang hoạt động" if row["status"] == "active" else
-                   "Lịch sử" if row["status"] == "historical" else "Đã hủy"),
+                   "Lịch sử" if row["status"] == "historical" else
+                   "Đang xử lý" if row['status']=='changing' else "Đã hủy"),
         confirmed_appointments=int(row.get("confirmed_appointments", 0)),
         active_holds=int(row.get("active_holds", 0)),
     )
@@ -132,6 +138,28 @@ AdminToken = Annotated[str, Depends(admin_token)]
 Registry = Annotated[RegistryClient, Depends(get_registry_client)]
 
 
+def get_schedule_changes(request:Request):
+    return ScheduleChanges(request.app.state.database)
+
+
+class ShiftWorkflow:
+    async def inspect(self,row):
+        params=urlencode({'doctor_code':row['doctor_code'],'branch_code':row['branch_code'],
+                          'date':str(row['duty_date']),'shift':row['shift']})
+        return await call_change('appointment','GET','/api/v1/appointments/internal/shift-impact?'+params)
+
+    async def execute(self,operation):
+        return await call_change('appointment','POST',f"/api/v1/appointments/internal/shift-changes/{operation['id']}",operation['payload'])
+
+
+def get_shift_workflow():
+    return ShiftWorkflow()
+
+
+Changes=Annotated[ScheduleChanges,Depends(get_schedule_changes)]
+Workflow=Annotated[ShiftWorkflow,Depends(get_shift_workflow)]
+
+
 @router.get("/doctor-schedules", response_model=list[ScheduleResponse])
 async def list_doctor_schedules(
     repository: Repository,
@@ -169,18 +197,33 @@ async def create_doctor_schedules(
 
 @router.get("/doctor-schedules/{schedule_id}/impact", response_model=ScheduleImpact)
 async def doctor_schedule_impact(
-    schedule_id: int, repository: Repository, token: AdminToken,
+    schedule_id: int, repository: Repository, token: AdminToken, workflow:Workflow,
 ) -> ScheduleImpact:
     impact = await repository.schedule_impact(schedule_id)
     if impact is None:
         raise HTTPException(status_code=404, detail="Doctor schedule not found")
+    try:
+        remote=await workflow.inspect(await repository.get_schedule(schedule_id))
+    except (ChangeRejected,ChangeUnavailable) as exc:
+        raise HTTPException(503,str(exc)) from exc
+    impact.update(checked_in=int(remote['checked_in']),pending=int(remote['pending']))
+    impact['can_change']=impact['status'] in ('active','changing') and not impact['active_holds'] and not remote['checked_in'] and not remote['pending']
     return ScheduleImpact(**impact)
 
 
 @router.post("/doctor-schedules/{schedule_id}/cancel", response_model=ScheduleResponse)
-async def cancel_doctor_schedule(schedule_id: int, repository: Repository, token: AdminToken) -> ScheduleResponse:
+async def cancel_doctor_schedule(schedule_id: int, repository: Repository, token: AdminToken,
+                                 changes:Changes,workflow:Workflow) -> ScheduleResponse:
+    operation=None
     try:
-        return to_response(await repository.change_schedule(schedule_id))
+        operation=await changes.prepare(schedule_id,'cancel')
+        await workflow.execute(operation)
+        return to_response(await changes.finish(operation['id']))
+    except ChangeRejected as exc:
+        if operation: await changes.finish(operation['id'],abort=True)
+        raise HTTPException(409,str(exc)) from exc
+    except ChangeUnavailable as exc:
+        raise HTTPException(503,str(exc)) from exc
     except ScheduleConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -188,14 +231,23 @@ async def cancel_doctor_schedule(schedule_id: int, repository: Repository, token
 @router.post("/doctor-schedules/{schedule_id}/transfer", response_model=ScheduleResponse)
 async def transfer_doctor_schedule(
     schedule_id: int, body: TransferScheduleRequest, repository: Repository,
-    token: AdminToken, registry: Registry,
+    token: AdminToken, registry: Registry, changes:Changes,workflow:Workflow,
 ) -> ScheduleResponse:
     current = await repository.get_schedule(schedule_id)
     if current is None:
         raise HTTPException(status_code=404, detail="Doctor schedule not found")
+    operation=None
     try:
         await registry.verify_references(token, {body.new_doctor_code}, {current["branch_code"]})
-        return to_response(await repository.change_schedule(schedule_id, body.new_doctor_code))
+        names=await registry.replacement_details(token,current['doctor_code'],body.new_doctor_code)
+        operation=await changes.prepare(schedule_id,'transfer',body.new_doctor_code,names)
+        await workflow.execute(operation)
+        return to_response(await changes.finish(operation['id']))
+    except ChangeRejected as exc:
+        if operation: await changes.finish(operation['id'],abort=True)
+        raise HTTPException(409,str(exc)) from exc
+    except ChangeUnavailable as exc:
+        raise HTTPException(503,str(exc)) from exc
     except InvalidScheduleReference as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RegistryUnavailable as exc:

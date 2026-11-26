@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, datetime
 from uuid import uuid4
 
@@ -9,7 +10,7 @@ from clinical.api import get_clients as clinical_clients, get_identity_client as
 from clinical.api import get_repository as clinical_repository
 from clinical.api import session_response
 from clinical.clients import ClinicalRejected, ClinicalUnavailable
-from clinical.repository import EncounterConflict
+from clinical.repository import ClinicalRepository, EncounterConflict
 from clinical.main import app as clinical_app
 from laboratory.api import account as lab_account, get_identity_client as lab_identity
 from laboratory.api import get_repository as lab_repository
@@ -34,9 +35,9 @@ def test_legacy_undated_treatment_session_is_serialized_without_fabricated_date(
 
 class Identity:
     async def current_account(self, token):
-        role = {"doctor": "doctor", "patient": "patient", "technician": "xnv"}.get(token, "admin")
+        role = {"doctor": "doctor", "doctor2": "doctor", "patient": "patient", "patient2": "patient", "technician": "xnv"}.get(token, "admin")
         return {"id": token, "role": role,
-                "subject_id": {"doctor": "BS1", "patient": "BN1", "technician": "XN1"}.get(token),
+                "subject_id": {"doctor": "BS1", "doctor2": "BS2", "patient": "BN1", "patient2": "BN2", "technician": "XN1"}.get(token),
                 "is_active": True}
 
 
@@ -99,8 +100,10 @@ class Encounters:
                 return []
         return [self.row]
 
-    async def list_plans(self, patient_id):
-        return [row for row in self.plans.values() if row["patient_id"] == patient_id]
+    async def list_plans(self, patient_id=None, *, doctor_code=None):
+        return [row for row in self.plans.values()
+                if (patient_id is None or row["patient_id"] == patient_id)
+                and (doctor_code is None or row["doctor_code"] == doctor_code)]
 
     async def get_plan(self, plan_id):
         return self.plans.get(plan_id)
@@ -264,6 +267,52 @@ def test_treatment_session_booking_and_completion(clinical_http):
                          headers={"Authorization": "Bearer doctor"})
     assert complete.status_code == 200, complete.text
     assert complete.json()["status"] == "completed"
+
+
+def test_doctor_can_read_own_treatment_plans_and_sessions_only(clinical_http):
+    http, repo, _clients = clinical_http
+    doctor = {"Authorization": "Bearer doctor"}
+    patient = {"Authorization": "Bearer patient"}
+    base = "/api/v1/clinical/treatments"
+    saved = http.post("/api/v1/clinical/encounters", headers=doctor, json={
+        "appointment_id": str(uuid4()), "symptoms": "Synthetic symptoms",
+        "treatments": [{"service_code": "DT1", "sessions": 2}],
+    })
+    assert saved.status_code == 200
+    plan = next(iter(repo.plans.values()))
+    other_plan = {**plan, "id": str(uuid4()), "doctor_code": "BS2"}
+    repo.plans[other_plan["id"]] = other_plan
+    assert http.get(f"{base}/doctor").status_code == 401
+    assert http.get(f"{base}/doctor", headers=patient).status_code == 403
+    assert http.get(f"{base}/doctor", headers={"Authorization": "Bearer technician"}).status_code == 403
+    listed = http.get(f"{base}/doctor", headers=doctor)
+    assert listed.status_code == 200
+    assert [row["id"] for row in listed.json()] == [plan["id"]]
+    assert http.get(f"{base}/doctor?patient_id=BN1", headers=doctor).json()[0]["id"] == plan["id"]
+    assert http.get(f"{base}/doctor?patient_id=BN2", headers=doctor).json() == []
+    path = f"{base}/{plan['id']}/sessions"
+    request = {"config_code": "CH1", "doctor_code": "BS1", "date": "2026-11-11",
+               "shift": 1, "idempotency_key": "read-treatment-session", "session_number": 1}
+    booked = http.post(path, json=request, headers=patient)
+    assert booked.status_code == 200
+    read = http.get(path, headers=doctor)
+    assert read.status_code == 200
+    assert read.json()[0]["id"] == booked.json()["id"]
+    assert read.json()[0]["status"] == "booked"
+    assert http.get(path, headers=patient).status_code == 200
+    assert http.get(path, headers={"Authorization": "Bearer doctor2"}).status_code == 404
+    assert http.get(path, headers={"Authorization": "Bearer patient2"}).status_code == 404
+    assert http.get(path, headers={"Authorization": "Bearer technician"}).status_code == 403
+    assert http.post(path, json=request, headers=doctor).status_code == 403
+    assert http.get(f"{base}/{other_plan['id']}/sessions", headers=doctor).status_code == 404
+    assert http.get(f"{base}/{uuid4()}/sessions", headers=doctor).status_code == 404
+    schema = http.get("/openapi.json").json()
+    assert f"{base}/doctor" in schema["paths"]
+
+
+def test_treatment_plan_repository_rejects_unscoped_reads():
+    with pytest.raises(ValueError, match="scope"):
+        asyncio.run(ClinicalRepository(None).list_plans())
 
 
 def test_rejected_treatment_slot_can_be_rebooked_but_uncertain_result_keeps_key(clinical_http):

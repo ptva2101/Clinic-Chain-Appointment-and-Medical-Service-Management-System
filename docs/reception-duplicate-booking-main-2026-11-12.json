@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "preserved_business_data": true,
+  "checked": [
+    "Existing endocrine appointments and check-in states",
+    "Existing endocrine invoices/payment states",
+    "Today slot holds and inventory",
+    "Account count and enabled states"
+  ],
+  "accounts": 56,
+  "existing_duplicate_appointments": [
+    "120e2121-b507-401d-b127-75e24f717a50",
+    "b1034419-bf2b-4181-9582-6f224aff4978"
+  ],
+  "note": "Both existing duplicate appointments are paid and checked in. They remain unchanged under the prior no-refund/no-cancellation-after-check-in policy."
+}

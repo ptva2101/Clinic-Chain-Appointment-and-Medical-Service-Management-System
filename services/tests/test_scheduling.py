@@ -4,6 +4,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from scheduling.api import get_identity_client, get_registry_client, get_repository
+from scheduling.api import get_schedule_changes, get_shift_workflow
+from common.change_http import ChangeRejected
+from uuid import uuid4
 from scheduling.main import app
 from scheduling.registry_client import InvalidScheduleReference
 from scheduling.repository import ScheduleConflict
@@ -19,6 +22,8 @@ class MemoryIdentity:
 
 
 class MemoryRegistry:
+    async def replacement_details(self,token,old,new):
+        return {'doctor_name':old,'new_doctor_name':new}
     async def verify_references(self, token, doctor_codes, branch_codes):
         if not doctor_codes.issubset({"BS900", "BS901"}) or branch_codes != {"CN_HN"}:
             raise InvalidScheduleReference("Unknown doctor or branch")
@@ -29,6 +34,7 @@ class MemorySchedules:
         self.rows = []
         self.booked_ids = set()
         self.held_ids = set()
+        self.checked_ids = set()
 
     async def get_schedule(self, schedule_id):
         return next((row for row in self.rows if row["id"] == schedule_id), None)
@@ -82,12 +88,54 @@ class MemorySchedules:
         return created
 
 
+class MemoryChanges:
+    def __init__(self,repo):
+        self.repo=repo
+        self.operations={}
+
+    async def prepare(self,schedule_id,action,new_doctor_code=None,names=None):
+        row=await self.repo.get_schedule(schedule_id)
+        if row is None: raise ScheduleConflict('not found')
+        for op in self.operations.values():
+            if op['schedule_id']==schedule_id and op['action']==action and op['new']==new_doctor_code:
+                return op
+        if row['status']!='active' or schedule_id in self.repo.held_ids: raise ScheduleConflict('busy')
+        if action=='transfer' and new_doctor_code==row['doctor_code']: raise ScheduleConflict('same doctor')
+        op={'id':str(uuid4()),'schedule_id':schedule_id,'action':action,'new':new_doctor_code,'state':'pending'}
+        self.operations[op['id']]=op
+        row['status']='changing'
+        return op
+
+    async def finish(self,operation_id,abort=False):
+        op=self.operations[operation_id]
+        row=await self.repo.get_schedule(op['schedule_id'])
+        if abort:
+            row['status']='active'
+            self.operations.pop(operation_id,None)
+        elif op['state']=='pending':
+            row['status']='cancelled' if op['action']=='cancel' else 'active'
+            if op['action']=='transfer': row['doctor_code']=op['new']
+            op['state']='completed'
+        return row
+
+
+class MemoryWorkflow:
+    def __init__(self,repo): self.repo=repo
+    async def inspect(self,row):
+        return {'checked_in':int(row['id'] in self.repo.checked_ids),'pending':0}
+    async def execute(self,op):
+        if op['schedule_id'] in self.repo.checked_ids: raise ChangeRejected('already checked in')
+
+
 @pytest.fixture
 def client():
     repository = MemorySchedules()
     app.dependency_overrides[get_repository] = lambda: repository
     app.dependency_overrides[get_identity_client] = lambda: MemoryIdentity()
     app.dependency_overrides[get_registry_client] = lambda: MemoryRegistry()
+    changes=MemoryChanges(repository)
+    app.dependency_overrides[get_schedule_changes]=lambda:changes
+    app.dependency_overrides[get_shift_workflow]=lambda:MemoryWorkflow(repository)
     try:
         with TestClient(app) as test_client:
             yield test_client
@@ -133,7 +181,7 @@ def test_schedule_validation_and_atomic_conflict(client):
     assert client.get("/api/v1/scheduling/doctor-schedules").json() == []
 
 
-def test_only_unbooked_shifts_can_be_cancelled_or_transferred(client):
+def test_booked_shifts_are_processed_but_checked_in_shifts_are_blocked(client):
     base = "/api/v1/scheduling/doctor-schedules"
     admin = {"Authorization": "Bearer admin"}
     day = (date.today() + timedelta(days=1)).isoformat()
@@ -144,12 +192,13 @@ def test_only_unbooked_shifts_can_be_cancelled_or_transferred(client):
     ]}, headers=admin).json()
     repo = app.dependency_overrides[get_repository]()
     repo.booked_ids.add(created[0]["id"])
+    repo.checked_ids.add(created[0]['id'])
     assert client.post(f"{base}/1/cancel", headers=admin).status_code == 409
     assert client.post(f"{base}/1/transfer", json={"new_doctor_code": "BS900"},
                        headers=admin).status_code == 409
     assert client.post(f"{base}/2/cancel").status_code == 401
     assert client.post(f"{base}/2/cancel", headers=admin).status_code == 200
-    assert client.post(f"{base}/2/cancel", headers=admin).status_code == 409
+    assert client.post(f"{base}/2/cancel", headers=admin).status_code == 200
     transferred = client.post(f"{base}/3/transfer", json={"new_doctor_code": "BS901"}, headers=admin)
     assert transferred.status_code == 200
     assert transferred.json()["MaBacSi"] == "BS901"
@@ -169,6 +218,7 @@ def test_schedule_impact_is_admin_only_and_change_guard_is_rechecked(client):
     assert client.get(impact_url, headers=admin).json() == {
         "schedule_id": created["id"], "status": "active",
         "confirmed_appointments": 0, "active_holds": 0, "can_change": True,
+        'checked_in':0,'pending':0,
     }
     repo = app.dependency_overrides[get_repository]()
     repo.held_ids.add(created["id"])
@@ -178,9 +228,12 @@ def test_schedule_impact_is_admin_only_and_change_guard_is_rechecked(client):
     repo.booked_ids.add(created["id"])
     assert client.get(base).json()[0]["confirmed_appointments"] == 1
     assert client.get(impact_url, headers=admin).json()["confirmed_appointments"] == 1
+    assert client.get(impact_url,headers=admin).json()['can_change'] is True
+    repo.checked_ids.add(created['id'])
     assert client.post(f"{base}/1/transfer", json={"new_doctor_code": "BS901"},
                        headers=admin).status_code == 409
     repo.booked_ids.clear()
+    repo.checked_ids.clear()
     assert client.post(f"{base}/1/cancel", headers=admin).status_code == 200
     assert client.get(impact_url, headers=admin).json()["can_change"] is False
     assert f"{base}/{{schedule_id}}/impact" in client.get("/openapi.json").json()["paths"]

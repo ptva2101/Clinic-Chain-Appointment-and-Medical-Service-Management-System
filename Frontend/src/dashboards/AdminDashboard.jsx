@@ -449,18 +449,18 @@ export default function AdminDashboard({
   }, [activeMenu, identityAccessToken, billingPage, billingReload])
 
   const handleRefund = async (invoice) => {
-    if (!window.confirm(`Ghi nhận hoàn tiền cho hóa đơn ${invoice.id}? Thao tác này chỉ cập nhật trạng thái trong hệ thống, không chuyển tiền qua ngân hàng.`)) return
+    if (!window.confirm(`Hoàn tiền mô phỏng và hủy lịch hẹn của hóa đơn ${invoice.id}? Chỉ áp dụng trước check-in. Bệnh nhân sẽ nhận thông báo.`)) return
     setRefundBusyId(invoice.id)
     try {
       const response = await simulateAdminRefund(identityAccessToken, invoice.id)
       const result = await response.json()
       if (!response.ok) throw new Error(typeof result?.detail === 'string' ? result.detail : 'Không thể ghi nhận hoàn tiền.')
-      notify('Đã hoàn tiền. Bệnh nhân có thể làm mới trang rồi hủy lịch chưa check-in.')
-      setBillingReload((value) => value + 1)
+      notify('Đã hoàn tiền, hủy lịch, trả chỗ và gửi thông báo cho bệnh nhân.')
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Không thể ghi nhận hoàn tiền.', 'error')
     } finally {
       setRefundBusyId('')
+      setBillingReload((value) => value + 1)
     }
   }
 
@@ -833,11 +833,11 @@ export default function AdminDashboard({
     try {
       const impact = await getDoctorScheduleImpact(identityAccessToken, schedule.id)
       if (!impact.can_change) {
-        notify(`Không thể hủy ca: ${impact.confirmed_appointments} lịch hẹn, ${impact.active_holds} chỗ đang giữ.`, 'error')
+        notify(`Chưa thể hủy ca: ${impact.checked_in || 0} bệnh nhân đã check-in/khám, ${impact.active_holds} chỗ đang giữ, ${impact.pending || 0} lịch đang xử lý.`, 'error')
         await loadAdminDoctorSchedules()
         return
       }
-      if (!window.confirm(`Hủy ca trực ${schedule.MaLichTruc} ngày ${schedule.NgayTruc}?`)) return
+      if (!window.confirm(`Hủy ca trực ${schedule.MaLichTruc} ngày ${schedule.NgayTruc}? ${impact.confirmed_appointments} lịch hẹn sẽ được hủy; lịch đã trả tiền sẽ tự động hoàn tiền mô phỏng và bệnh nhân nhận thông báo.`)) return
       const response = await cancelDoctorSchedules({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -880,11 +880,9 @@ export default function AdminDashboard({
         CaTruc: schedule.CaTruc,
       })
 
-      notify(
-        affectedPatients.length > 0
-          ? `Đã hủy ca trực và phát thông báo cảnh báo đến ${affectedPatients.length} bệnh nhân bị ảnh hưởng!`
-          : `Đã hủy ca trực ${schedule.MaLichTruc}.`,
-      )
+      await loadAdminDoctorSchedules()
+      setBillingReload((value) => value + 1)
+      notify('Đã hủy ca và các lịch hẹn liên quan, hoàn tiền lịch đã thanh toán và gửi thông báo cho bệnh nhân.')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể hủy ca trực.'
       notify(message, 'error')
@@ -905,12 +903,7 @@ export default function AdminDashboard({
 
     if (sameSpecialtyDoctors.length > 0) return sameSpecialtyDoctors
 
-    return staffList.filter(
-      (staff) =>
-        staff.VaiTro === 'Bác sĩ' &&
-        staff.TrangThai === 'active' &&
-        staff.MaNhanSu !== schedule.MaBacSi,
-    )
+    return []
   }
 
   const handleOpenDoctorTransfer = (schedule) => {
@@ -942,7 +935,7 @@ export default function AdminDashboard({
     try {
       const impact = await getDoctorScheduleImpact(identityAccessToken, schedule.id)
       if (!impact.can_change) {
-        notify(`Không thể chuyển ca: ${impact.confirmed_appointments} lịch hẹn, ${impact.active_holds} chỗ đang giữ.`, 'error')
+        notify(`Chưa thể chuyển ca: ${impact.checked_in || 0} bệnh nhân đã check-in/khám, ${impact.active_holds} chỗ đang giữ, ${impact.pending || 0} lịch đang xử lý.`, 'error')
         await loadAdminDoctorSchedules()
         return
       }
@@ -995,7 +988,8 @@ export default function AdminDashboard({
       })
 
       handleCloseDoctorTransfer()
-      notify('Đã chuyển ca trực chưa có lịch hẹn sang bác sĩ mới.')
+      await loadAdminDoctorSchedules()
+      notify('Đã thay bác sĩ của ca và các lịch hẹn liên quan; bệnh nhân đã được gửi thông báo.')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể điều chuyển bác sĩ trực.'
       notify(message, 'error')
@@ -1595,8 +1589,10 @@ export default function AdminDashboard({
             <tbody>
               {getPageRows(filteredDoctorSchedules, schedulePage).map((schedule) => {
                 const isCancelled = schedule.TrangThai === 'Đã hủy'
-                const hasReservations = schedule.SoLichHenDangCo > 0 || schedule.SoChoDangGiu > 0
-                const canRequestChange = Boolean(schedule.id) && !adminScheduleLoading && !hasReservations
+                const isHistorical = schedule.TrangThai === 'Lịch sử'
+                const isChanging = schedule.TrangThai === 'Đang xử lý'
+                const hasReservations = schedule.SoChoDangGiu > 0
+                const canRequestChange = Boolean(schedule.id) && !adminScheduleLoading && !hasReservations && !isHistorical && !isChanging
                 return (
                   <tr key={schedule.id ? `schedule-${schedule.id}` : `${schedule.MaLichTruc}-${schedule.MaBacSi}-${schedule.MaChiNhanh}-${schedule.NgayTruc}-${schedule.CaTruc}`}>
                     <td>{getDoctorName(schedule.MaBacSi)}</td>
@@ -1609,12 +1605,12 @@ export default function AdminDashboard({
                     </td>
                     <td>
                       <span className={`status-pill ${isCancelled ? 'danger' : 'active'}`}>
-                        {isCancelled ? 'Đã hủy' : 'Đang hoạt động'}
+                        {schedule.TrangThai}
                       </span>
                     </td>
                     <td>
-                      {!isCancelled && (
-                        <div className="admin-actions-row" title={hasReservations ? 'Cần xử lý lịch hẹn/chỗ đang giữ trước' : undefined}>
+                      {!isCancelled && !isHistorical && (
+                        <div className="admin-actions-row" title={hasReservations ? 'Chờ yêu cầu giữ chỗ hoàn tất rồi thử lại' : isChanging ? 'Hệ thống đang xử lý thay đổi ca' : undefined}>
                           <button type="button" className="admin-secondary-button"
                             disabled={!canRequestChange} onClick={() => handleOpenDoctorTransfer(schedule)}>
                             Chuyển ca
@@ -1878,7 +1874,7 @@ export default function AdminDashboard({
                   </span></td>
                   <td>
                     {invoice.status === 'paid' && invoice.payment_method === 'simulated' && invoice.source === 'live' ? (
-                      <button type="button" className="admin-secondary-button" onClick={() => handleRefund(invoice)} disabled={refundBusyId === invoice.id}>Ghi nhận hoàn tiền</button>
+                      <button type="button" className="admin-secondary-button" onClick={() => handleRefund(invoice)} disabled={refundBusyId === invoice.id}>Hoàn tiền & hủy lịch</button>
                     ) : (
                       <span
                         className="admin-action-note"

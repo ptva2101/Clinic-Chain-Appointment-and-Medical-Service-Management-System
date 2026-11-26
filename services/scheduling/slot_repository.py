@@ -150,6 +150,20 @@ class SlotRepository:
         async with pool.acquire() as connection:
             try:
                 async with connection.cursor() as cursor:
+                    # Serialize this patient's whole shift, including different
+                    # services/branches. A per-service inventory lock alone cannot
+                    # prevent two tabs from reserving two different services.
+                    await cursor.execute(
+                        "INSERT INTO patient_slot_locks (patient_id, duty_date, shift) "
+                        "VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE patient_id = patient_id",
+                        (patient_id, body.date, body.shift),
+                    )
+                    await cursor.execute(
+                        "SELECT patient_id FROM patient_slot_locks "
+                        "WHERE patient_id = %s AND duty_date = %s AND shift = %s FOR UPDATE",
+                        (patient_id, body.date, body.shift),
+                    )
+                    await cursor.fetchone()
                     used = await self._lock_slot(cursor, body.config_code, body.date, body.shift)
                     await cursor.execute(
                         f"SELECT {HOLD_COLUMNS} FROM slot_holds "
@@ -164,6 +178,18 @@ class SlotRepository:
                             raise HoldConflict("Hold is no longer active; use a new idempotency key")
                         await connection.rollback()
                         return existing
+                    await cursor.execute(
+                        "SELECT id FROM slot_holds WHERE patient_id = %s "
+                        "AND duty_date = %s AND shift = %s "
+                        "AND (state = 'confirmed' OR (state = 'held' AND expires_at > UTC_TIMESTAMP(6))) "
+                        "LIMIT 1 FOR UPDATE",
+                        (patient_id, body.date, body.shift),
+                    )
+                    if await cursor.fetchone() is not None:
+                        raise HoldConflict(
+                            "Bạn đã có lịch hẹn hoặc đang giữ chỗ trong ca này. "
+                            "Vui lòng chọn ca khác hoặc hủy lịch cũ nếu đủ điều kiện."
+                        )
                     if config["TrangThai"] != "active" or int(config["SlotGioiHan"]) <= used:
                         raise SlotUnavailable("No available slot for this service and shift")
                     await cursor.execute(

@@ -26,6 +26,7 @@ async def migrate() -> None:
                         "refunded_at DATETIME(6) NULL",
                         "source VARCHAR(32) NOT NULL DEFAULT 'live'",
                         "legacy_date DATE NULL",
+                        "cancel_operation_id VARCHAR(64) NULL",
                     ):
                         name = column.split()[0]
                         await cursor.execute(f"SHOW COLUMNS FROM invoices LIKE '{name}'")

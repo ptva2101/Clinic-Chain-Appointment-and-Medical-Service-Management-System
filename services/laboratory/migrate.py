@@ -17,6 +17,12 @@ async def migrate() -> None:
                     for statement in statements:
                         if statement.strip():
                             await cursor.execute(statement)
+                async with connection.cursor() as cursor:
+                    await cursor.execute("SHOW COLUMNS FROM lab_orders LIKE 'technician_name_snapshot'")
+                    if await cursor.fetchone() is None:
+                        await cursor.execute(
+                            "ALTER TABLE lab_orders ADD COLUMN technician_name_snapshot VARCHAR(160) NULL"
+                        )
                 await connection.commit()
             except Exception:
                 await connection.rollback()

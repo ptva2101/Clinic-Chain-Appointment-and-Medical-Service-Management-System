@@ -1,0 +1,43 @@
+{
+  "phase": "core",
+  "results": [
+    {
+      "case": "Patient cancels unpaid booking and cannot pay cancelled invoice",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Admin refund automatically cancels, releases slot and sends one notification; repeated refund is idempotent",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Check-in/completed exam blocks refund and rejects entire shift without partial refunds",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Shift cancellation handles paid/unpaid bookings and notifies both patients once",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Transfer updates bookings, invoice doctor, holds and treatment; enforces specialty and availability; notifies once",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Cancelled treatment can be rebooked; cancelled idempotency key cannot resurrect old booking",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Concurrent check-in versus refund has exactly one winner",
+      "status": "PASS",
+      "evidence": {
+        "refund": 200,
+        "checkin": 409
+      }
+    }
+  ]
+}

@@ -16,6 +16,10 @@ class MemoryIdentity:
 
 
 class MemoryClients:
+    async def refund_cancel(self, token, appointment_id):
+        row=await self.repository.by_appointment(appointment_id)
+        await self.repository.simulate_refund(row['id'])
+        self.status='cancelled'
     def __init__(self):
         self.status = "confirmed"
         self.price = 150000
@@ -114,6 +118,7 @@ class MemoryInvoices:
 def billing_client(monkeypatch):
     repository = MemoryInvoices()
     clients = MemoryClients()
+    clients.repository=repository
     app.dependency_overrides[get_repository] = lambda: repository
     app.dependency_overrides[get_clients] = lambda: clients
     app.dependency_overrides[get_identity_client] = lambda: MemoryIdentity()

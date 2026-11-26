@@ -207,7 +207,16 @@ class ClinicalRepository:
                 await connection.rollback()
                 raise
 
-    async def list_plans(self, patient_id: str) -> list[dict]:
+    async def list_plans(self, patient_id: str | None = None, *, doctor_code: str | None = None) -> list[dict]:
+        where, values = [], []
+        if patient_id is not None:
+            where.append("p.patient_id = %s")
+            values.append(patient_id)
+        if doctor_code is not None:
+            where.append("p.doctor_code = %s")
+            values.append(doctor_code)
+        if not where:
+            raise ValueError("Treatment plans require a patient or doctor scope")
         pool = await self.database.pool()
         async with pool.acquire() as connection:
             async with connection.cursor() as cursor:
@@ -218,8 +227,8 @@ class ClinicalRepository:
                     "THEN 1 ELSE 0 END) AS scheduled_sessions, "
                     "SUM(CASE WHEN s.status = 'completed' THEN 1 ELSE 0 END) AS completed_sessions "
                     "FROM treatment_plans p LEFT JOIN treatment_sessions s ON s.plan_id = p.id "
-                    "WHERE p.patient_id = %s GROUP BY p.id ORDER BY p.created_at DESC LIMIT 500",
-                    (patient_id,),
+                    "WHERE " + " AND ".join(where) + " GROUP BY p.id ORDER BY p.created_at DESC LIMIT 500",
+                    tuple(values),
                 )
                 rows = await cursor.fetchall()
                 await connection.rollback()
@@ -276,11 +285,13 @@ class ClinicalRepository:
                     await cursor.execute(
                         "SELECT id, plan_id, session_number, patient_request_key, config_code, doctor_code, "
                         "duty_date, shift, appointment_id, invoice_id, status FROM treatment_sessions "
-                        "WHERE plan_id = %s AND session_number = %s",
-                        (plan["id"], request["session_number"]),
+                        "WHERE plan_id = %s AND (session_number = %s AND status <> 'cancelled' OR patient_request_key = %s)",
+                        (plan["id"], request["session_number"],request['idempotency_key']),
                     )
                     row = await cursor.fetchone()
                     if row:
+                        if row['status']=='cancelled':
+                            raise EncounterConflict('Buổi cũ đã hủy, hãy đặt lại với mã yêu cầu mới.')
                         if row["patient_request_key"] != request["idempotency_key"]:
                             raise EncounterConflict("Treatment session has already been booked")
                         for column, key in (("config_code", "config_code"), ("doctor_code", "doctor_code"),

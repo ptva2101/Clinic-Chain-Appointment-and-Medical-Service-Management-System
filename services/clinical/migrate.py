@@ -39,15 +39,25 @@ async def migrate() -> None:
                         "WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'ck_session_status'"
                     )
                     check = await cursor.fetchone()
-                    if check is None or "historical_unbooked" not in check["clause"]:
+                    if check is None or "cancelled" not in check["clause"]:
                         if check is not None:
                             await cursor.execute(
                                 "ALTER TABLE treatment_sessions DROP CHECK ck_session_status"
                             )
                         await cursor.execute(
                             "ALTER TABLE treatment_sessions ADD CONSTRAINT ck_session_status "
-                            "CHECK (status IN ('pending', 'booked', 'completed', 'historical_unbooked'))"
+                            "CHECK (status IN ('pending', 'booked', 'completed', 'historical_unbooked', 'cancelled'))"
                         )
+                    await cursor.execute("SHOW COLUMNS FROM treatment_sessions LIKE 'active_session_number'")
+                    if await cursor.fetchone() is None:
+                        await cursor.execute("ALTER TABLE treatment_sessions ADD COLUMN active_session_number SMALLINT UNSIGNED "
+                                             "GENERATED ALWAYS AS (CASE WHEN status='cancelled' THEN NULL ELSE session_number END) STORED")
+                    await cursor.execute("SHOW INDEX FROM treatment_sessions WHERE Key_name='uq_session_number'")
+                    if await cursor.fetchone():
+                        await cursor.execute('ALTER TABLE treatment_sessions DROP INDEX uq_session_number')
+                    await cursor.execute("SHOW INDEX FROM treatment_sessions WHERE Key_name='uq_active_session_number'")
+                    if await cursor.fetchone() is None:
+                        await cursor.execute('ALTER TABLE treatment_sessions ADD UNIQUE KEY uq_active_session_number (plan_id,active_session_number)')
                     await cursor.execute(
                         "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() "
                         "AND table_name = 'historical_records'"

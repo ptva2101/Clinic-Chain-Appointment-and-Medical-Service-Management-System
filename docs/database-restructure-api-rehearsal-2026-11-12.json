@@ -1,0 +1,85 @@
+{
+  "date": "2026-11-12",
+  "mode": "isolated_business_exercise",
+  "results": [
+    {
+      "case": "All active accounts log in with 123456 and staff link to Registry",
+      "status": "PASS",
+      "evidence": {
+        "active_accounts": 43,
+        "total_accounts": 56
+      }
+    },
+    {
+      "case": "All seven services publish readiness and OpenAPI",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Catalogue contains only original Medicare entities",
+      "status": "PASS",
+      "evidence": {
+        "branches": 2,
+        "doctors": 33,
+        "services": 65,
+        "configs": 130,
+        "staff": 37
+      }
+    },
+    {
+      "case": "1920 exact original-rotation assignments, with no double booking",
+      "status": "PASS",
+      "evidence": {
+        "per_branch": {
+          "CN01": 960,
+          "CN02": 960
+        }
+      }
+    },
+    {
+      "case": "Branch-scoped laboratory history retains original retired technician names",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Removed staff accounts cannot log in",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Unpaid appointment cancellation works with original branch/service/doctor",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Insurance snapshot, payment and branch-specific reception check-in",
+      "status": "PASS",
+      "evidence": {
+        "list_price": 200000,
+        "amount_due": 40000
+      }
+    },
+    {
+      "case": "Doctor pause, laboratory result, conclusion and patient history on original catalogue",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Treatment booking, billing, check-in, completion and doctor progress 1/2",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Billing reports by branch, doctor and service",
+      "status": "PASS",
+      "evidence": {}
+    },
+    {
+      "case": "Repeated setup creates no additional shifts or catalogue entities",
+      "status": "PASS",
+      "evidence": {
+        "new_shifts": 0
+      }
+    }
+  ]
+}

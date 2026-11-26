@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-12",
+  "results": [
+    {
+      "case": "Internal medicine doctor sees exactly four treatments, including intramuscular injection",
+      "status": "PASS"
+    },
+    {
+      "case": "Remove treatment restored from unfinished saved draft, keeping its sibling",
+      "status": "PASS"
+    },
+    {
+      "case": "Duplicate treatment is blocked before final save",
+      "status": "PASS"
+    },
+    {
+      "case": "Re-add removed treatment and remove another without identifier collision",
+      "status": "PASS"
+    },
+    {
+      "case": "Final save payload includes only retained treatment (POST intercepted)",
+      "status": "PASS"
+    },
+    {
+      "case": "Remove all draft treatments and submit empty list without resurrecting removed orders",
+      "status": "PASS"
+    },
+    {
+      "case": "Actual appointment and encounter unchanged; no browser JavaScript errors",
+      "status": "PASS"
+    }
+  ],
+  "javascriptErrors": [],
+  "scope": "Browser-only draft responses; clinical POSTs intercepted; real records unchanged"
+}

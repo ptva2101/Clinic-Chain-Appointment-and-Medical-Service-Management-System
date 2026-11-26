@@ -1,0 +1,38 @@
+{
+  "results": [
+    {
+      "case": "All 56 account rows, roles, IDs and enabled states match Identity database across 6 pages",
+      "status": "PASS"
+    },
+    {
+      "case": "Vietnamese role names with/without accents, uppercase, extra spaces and raw role codes search all pages",
+      "status": "PASS"
+    },
+    {
+      "case": "Username/profile-ID search, empty results, clearing search and page reset work",
+      "status": "PASS"
+    },
+    {
+      "case": "All 37 staff records and displayed fields match Registry database across 4 pages",
+      "status": "PASS"
+    },
+    {
+      "case": "All 17 patient records and displayed fields match Registry database across 2 pages",
+      "status": "PASS"
+    },
+    {
+      "case": "Registry staff and patient server searches find records beyond the first page and reset pagination",
+      "status": "PASS"
+    },
+    {
+      "case": "Account refresh reloads Identity data without changing current business data",
+      "status": "PASS"
+    },
+    {
+      "case": "A failed refresh shows an error instead of stale rows; retry restores the current database list",
+      "status": "PASS"
+    }
+  ],
+  "javascriptErrors": [],
+  "scope": "Live main UI; read-only searches/pagination and mocked browser-only HTTP failure. No account or profile changed."
+}

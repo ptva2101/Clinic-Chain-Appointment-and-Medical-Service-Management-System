@@ -15,6 +15,21 @@ class InvalidScheduleReference(Exception):
 
 
 class RegistryClient:
+    async def replacement_details(self,token,old,new):
+        base=os.getenv('REGISTRY_INTERNAL_URL','http://registry:8000').rstrip('/')
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                profiles=[]
+                for code in (old,new):
+                    result=await client.get(f'{base}/api/v1/registry/staff/by-code/{quote(code,safe="")}',headers={'Authorization':f'Bearer {token}'})
+                    if result.status_code!=200: raise InvalidScheduleReference('Không tìm được hồ sơ bác sĩ.')
+                    profiles.append(result.json())
+        except httpx.RequestError as exc:
+            raise RegistryUnavailable('Registry unavailable') from exc
+        if profiles[0].get('specialty')!=profiles[1].get('specialty') or not profiles[0].get('specialty'):
+            raise InvalidScheduleReference('Bác sĩ thay thế phải cùng chuyên khoa.')
+        return {'doctor_name':profiles[0]['full_name'],'new_doctor_name':profiles[1]['full_name']}
+
     async def active_doctor_codes(self, codes: set[str]) -> set[str]:
         if not codes:
             return set()

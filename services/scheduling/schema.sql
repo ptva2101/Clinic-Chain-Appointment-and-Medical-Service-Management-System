@@ -23,6 +23,13 @@ CREATE TABLE IF NOT EXISTS slot_inventory (
     PRIMARY KEY (config_code, duty_date, shift)
 );
 
+CREATE TABLE IF NOT EXISTS patient_slot_locks (
+    patient_id VARCHAR(128) NOT NULL,
+    duty_date DATE NOT NULL,
+    shift TINYINT UNSIGNED NOT NULL,
+    PRIMARY KEY (patient_id, duty_date, shift)
+);
+
 CREATE TABLE IF NOT EXISTS slot_holds (
     id CHAR(36) NOT NULL PRIMARY KEY,
     patient_id VARCHAR(128) NOT NULL,
@@ -42,7 +49,19 @@ CREATE TABLE IF NOT EXISTS slot_holds (
     KEY ix_hold_slot_state (config_code, duty_date, shift, state, expires_at),
     KEY ix_hold_schedule_state (doctor_code, branch_code, duty_date, shift, state, expires_at),
     KEY ix_hold_patient (patient_id, created_at),
+    KEY ix_hold_patient_slot (patient_id, duty_date, shift, state, expires_at),
     CONSTRAINT fk_hold_inventory FOREIGN KEY (config_code, duty_date, shift)
         REFERENCES slot_inventory(config_code, duty_date, shift),
     CONSTRAINT ck_hold_state CHECK (state IN ('held', 'confirmed', 'released', 'expired'))
+);
+
+CREATE TABLE IF NOT EXISTS schedule_changes (
+    id CHAR(36) PRIMARY KEY,
+    schedule_id BIGINT UNSIGNED NOT NULL,
+    payload JSON NOT NULL,
+    reservation_id BIGINT UNSIGNED NULL,
+    state VARCHAR(16) NOT NULL DEFAULT 'pending',
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    KEY ix_schedule_change (schedule_id, created_at),
+    KEY ix_schedule_change_pending (state, created_at)
 );

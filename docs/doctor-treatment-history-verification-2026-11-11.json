@@ -1,0 +1,34 @@
+{
+  "date": "2026-11-11",
+  "results": [
+    {
+      "case": "Real Clinical API returns existing plans and completed session",
+      "status": "PASS"
+    },
+    {
+      "case": "Actual API ownership: own doctor and patient allowed; other doctor blocked",
+      "status": "PASS"
+    },
+    {
+      "case": "Doctor history shows An 1/2 in progress and Binh 0/2 unbooked",
+      "status": "PASS"
+    },
+    {
+      "case": "Doctor treatment history persists after F5",
+      "status": "PASS"
+    },
+    {
+      "case": "Current-patient history and encounter-detail adapters include treatments",
+      "status": "PASS"
+    },
+    {
+      "case": "Patient UI still shows the same 1/2 progress and two sessions",
+      "status": "PASS"
+    },
+    {
+      "case": "No browser JavaScript errors; read-only verification",
+      "status": "PASS"
+    }
+  ],
+  "javascriptErrors": []
+}

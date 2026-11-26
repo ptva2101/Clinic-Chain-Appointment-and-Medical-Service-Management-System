@@ -31,6 +31,7 @@ class OrderResponse(BaseModel):
     payment_method: str | None
     payment_token: str | None
     technician_code: str | None
+    technician_name_snapshot: str | None = None
     result_text: str | None
     notes: str | None
     created_at: datetime

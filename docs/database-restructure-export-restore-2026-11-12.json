@@ -1,0 +1,49 @@
+{
+  "status": "verified",
+  "passwords_verified": 56,
+  "all_staff_active": 37,
+  "retired_technician_results_preserved": 3,
+  "roles": {
+    "doctor": 33,
+    "xnv": 2,
+    "admin": 2,
+    "patient": 17,
+    "letan": 2
+  },
+  "row_counts": {
+    "identity": {
+      "accounts": 56,
+      "refresh_tokens": 47
+    },
+    "registry": {
+      "staff_profiles": 37,
+      "branches": 2,
+      "medical_services": 65,
+      "branch_services": 130,
+      "patients": 17
+    },
+    "scheduling": {
+      "doctor_schedules": 3648,
+      "slot_holds": 0,
+      "slot_inventory": 0
+    },
+    "appointment": {
+      "appointments": 49,
+      "appointment_checkins": 40,
+      "patient_notifications": 15,
+      "appointment_queue_counters": 22
+    },
+    "billing": {
+      "invoices": 49,
+      "legacy_lab_charges": 13
+    },
+    "clinical": {
+      "encounters": 20,
+      "treatment_plans": 8,
+      "treatment_sessions": 16
+    },
+    "laboratory": {
+      "lab_orders": 13
+    }
+  }
+}

@@ -1,0 +1,181 @@
+{
+  "checks": [
+    "All original business records preserved",
+    "Identity and Registry unchanged (56 accounts, 17 patients)",
+    "All planned inserts present with exact values",
+    "Slot inventory equals confirmed holds",
+    "Monthly and grouped reports agree for all 4 months",
+    "All 33 doctors and both branches represented each month",
+    "Patient An and Binh can read their added history, lab results and treatment plans",
+    "Both receptionists see 4 new waiting check-ins in their own branch",
+    "Second committed import inserts zero rows and inventory remains unchanged"
+  ],
+  "accounts": 56,
+  "patients": 17,
+  "totals_after": {
+    "identity": {
+      "accounts": 56
+    },
+    "registry": {
+      "patients": 17,
+      "staff": 37,
+      "branches": 2,
+      "services": 65,
+      "configs": 130,
+      "insurance": 27
+    },
+    "scheduling": {
+      "schedules": 3834,
+      "holds": 11,
+      "inventory": 8
+    },
+    "appointment": {
+      "appointments": 246,
+      "checkins": 222,
+      "counters": 203
+    },
+    "billing": {
+      "invoices": 246,
+      "labs": 13
+    },
+    "clinical": {
+      "encounters": 153,
+      "plans": 33,
+      "sessions": 89,
+      "diseases": 54,
+      "medicines": 55
+    },
+    "laboratory": {
+      "orders": 58
+    }
+  },
+  "idempotency": {
+    "committed": true,
+    "inserted": {
+      "scheduling": {
+        "doctor_schedules": 0,
+        "slot_inventory": 0,
+        "slot_holds": 0
+      },
+      "appointment": {
+        "appointments": 0,
+        "appointment_checkins": 0,
+        "appointment_queue_counters": 0
+      },
+      "billing": {
+        "invoices": 0
+      },
+      "clinical": {
+        "encounters": 0,
+        "treatment_plans": 0,
+        "treatment_sessions": 0
+      },
+      "laboratory": {
+        "lab_orders": 0
+      }
+    }
+  },
+  "reports": {
+    "2026-08": {
+      "monthly": {
+        "month": "2026-08",
+        "paid_count": 33,
+        "pending_count": 0,
+        "revenue": 8080000,
+        "insurance_discount": 770000,
+        "legacy_estimated_count": 0,
+        "legacy_lab_count": 0,
+        "refunded_count": 0,
+        "refunded_amount": 0,
+        "payment_method": "simulated"
+      },
+      "branch_groups": 2,
+      "doctor_groups": 33,
+      "service_groups": 13
+    },
+    "2026-09": {
+      "monthly": {
+        "month": "2026-09",
+        "paid_count": 33,
+        "pending_count": 0,
+        "revenue": 7785000,
+        "insurance_discount": 965000,
+        "legacy_estimated_count": 0,
+        "legacy_lab_count": 0,
+        "refunded_count": 0,
+        "refunded_amount": 0,
+        "payment_method": "simulated"
+      },
+      "branch_groups": 2,
+      "doctor_groups": 33,
+      "service_groups": 13
+    },
+    "2026-10": {
+      "monthly": {
+        "month": "2026-10",
+        "paid_count": 33,
+        "pending_count": 0,
+        "revenue": 7605000,
+        "insurance_discount": 1245000,
+        "legacy_estimated_count": 0,
+        "legacy_lab_count": 0,
+        "refunded_count": 3,
+        "refunded_amount": 440000,
+        "payment_method": "simulated"
+      },
+      "branch_groups": 2,
+      "doctor_groups": 33,
+      "service_groups": 13
+    },
+    "2026-11": {
+      "monthly": {
+        "month": "2026-11",
+        "paid_count": 90,
+        "pending_count": 1,
+        "revenue": 35356000,
+        "insurance_discount": 9984000,
+        "legacy_estimated_count": 0,
+        "legacy_lab_count": 0,
+        "refunded_count": 4,
+        "refunded_amount": 675000,
+        "payment_method": "simulated"
+      },
+      "branch_groups": 2,
+      "doctor_groups": 33,
+      "service_groups": 33
+    }
+  },
+  "demo_patients": {
+    "990000000001": {
+      "all_visits": 9,
+      "added_visits": 8,
+      "plans": 2,
+      "lab_results": 4
+    },
+    "990000000002": {
+      "all_visits": 7,
+      "added_visits": 7,
+      "plans": 1,
+      "lab_results": 3
+    }
+  },
+  "reception": {
+    "CN01": {
+      "waiting": 4,
+      "added": 4,
+      "doctors": [
+        "LEGACY_BS006",
+        "LEGACY_BS013"
+      ]
+    },
+    "CN02": {
+      "waiting": 4,
+      "added": 4,
+      "doctors": [
+        "LEGACY_BS002",
+        "LEGACY_BS003"
+      ]
+    }
+  },
+  "status": "PASS"
+}

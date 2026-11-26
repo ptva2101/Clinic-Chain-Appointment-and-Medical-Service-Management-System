@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     refunded_at DATETIME(6) NULL,
     source VARCHAR(32) NOT NULL DEFAULT 'live',
     legacy_date DATE NULL,
+    cancel_operation_id VARCHAR(64) NULL,
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     UNIQUE KEY uq_invoice_appointment (appointment_id),

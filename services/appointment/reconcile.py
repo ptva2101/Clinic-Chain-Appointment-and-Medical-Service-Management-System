@@ -67,8 +67,11 @@ class AppointmentReconciler:
         return "deferred"
 
     async def _cancel_pending(self, row: dict) -> str:
+        if row.get('change_operation_id'):
+            return 'deferred'
         if await self.billing.payment_status(row["id"]) == "paid":
             return "deferred"
+        await self.billing.cancel_unpaid(row['id'])
         try:
             hold = await self.scheduling.get_hold(row["hold_id"])
         except SchedulingRejected:
@@ -136,6 +139,8 @@ async def main() -> None:
         while True:
             try:
                 await reconciler.run_once()
+                from appointment.change_api import resume_changes
+                await resume_changes(database)
             except Exception:
                 logger.exception("Appointment reconciliation batch failed")
             await asyncio.sleep(interval)

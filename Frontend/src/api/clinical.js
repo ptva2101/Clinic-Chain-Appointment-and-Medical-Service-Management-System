@@ -27,6 +27,7 @@ const legacyLab = (row, encounterId) => ({
   MaDichVu: row.service_code,
   KetQuaXetNghiem: row.result_text || '',
   MaXNV: row.technician_code || '',
+  TenXNV: row.technician_name_snapshot || '',
   PaymentToken: row.payment_token || '',
   GiaCuoi: row.list_price,
   TrangThaiXetNghiem: row.status === 'resulted' ? 'Đã có kết quả' : 'Chưa thực hiện',
@@ -50,31 +51,56 @@ const legacyVisit = (row, labs = [], plans = [], sessionsByPlan = new Map()) => 
   })),
   DieuTri: row.treatments.flatMap((item) => {
     const plan = plans.find((entry) => entry.encounter_id === row.id && entry.service_code === item.service_code)
-    if (!plan) return []
-    const sessions = sessionsByPlan.get(plan.id) || []
-    return Array.from({ length: plan.total_sessions }, (_, index) => {
+    const sessions = plan ? sessionsByPlan.get(plan.id) || [] : []
+    return Array.from({ length: plan?.total_sessions ?? item.sessions }, (_, index) => {
       const number = index + 1
-      const session = sessions.find((entry) => entry.session_number === number)
+      const session = sessions.find((entry) => entry.session_number === number && entry.status !== 'cancelled')
+      const retries = sessions.filter((entry) => entry.session_number === number && entry.status === 'cancelled').length
       return {
-        MaLichTrinh: `${plan.id}:${number}`, MaLichHen: session?.appointment_id || '',
+        MaLichTrinh: plan ? `${plan.id}:${number}${retries ? `:retry${retries}` : ''}` : `DECLARED_${row.id}_${item.service_code}:${number}`,
+        MaLichHen: session?.appointment_id || '',
         MaLuotKham: row.id, MaDichVu: item.service_code, BuoiSo: number,
         NgayThucHien: session?.date || '', CaKham: session?.shift || '',
         TrangThai: session?.status === 'completed' ? 'Hoàn thành'
-          : session?.status === 'booked' ? 'Đã đặt lịch' : 'Chưa đặt lịch',
+          : session?.status === 'booked' ? 'Đã đặt lịch'
+            : plan ? 'Chưa đặt lịch'
+              : row.status === 'draft' ? 'Chờ hoàn tất lượt khám' : 'Chưa có dữ liệu buổi điều trị',
       }
     })
   }),
 })
 
-async function fetchHistory(path, labPath, token, filter = () => true) {
-  const [encounterResponse, labResponse] = await Promise.all([
+async function fetchDoctorTreatments(token, patientId) {
+  const query = patientId ? `?${new URLSearchParams({ patient_id: patientId })}` : ''
+  const response = await fetch(`${clinicalUrl}/treatments/doctor${query}`, {
+    headers: authorization(token), cache: 'no-store',
+  })
+  if (!response.ok) return { failed: response }
+  const plans = await response.json()
+  const responses = await Promise.all(plans.map((plan) => fetch(
+    `${clinicalUrl}/treatments/${encodeURIComponent(plan.id)}/sessions`,
+    { headers: authorization(token), cache: 'no-store' },
+  )))
+  const failed = responses.find((item) => !item.ok)
+  if (failed) return { failed }
+  const sessionsByPlan = new Map(await Promise.all(responses.map(async (item, index) => [
+    plans[index].id, await item.json(),
+  ])))
+  return { plans, sessionsByPlan }
+}
+
+async function fetchHistory(path, labPath, token, filter = () => true, patientId) {
+  const [encounterResponse, labResponse, treatments] = await Promise.all([
     fetch(`${clinicalUrl}${path}`, { headers: authorization(token), cache: 'no-store' }),
     fetch(`${laboratoryUrl}${labPath}`, { headers: authorization(token), cache: 'no-store' }),
+    fetchDoctorTreatments(token, patientId),
   ])
   if (!encounterResponse.ok) return legacyResponse(encounterResponse, () => [])
   if (!labResponse.ok) return legacyResponse(labResponse, () => [])
+  if (treatments.failed) return legacyResponse(treatments.failed, () => [])
   const labs = await labResponse.json()
-  return legacyResponse(encounterResponse, (rows) => rows.filter(filter).map((row) => legacyVisit(row, labs)))
+  return legacyResponse(encounterResponse, (rows) => rows.filter(filter).map((row) =>
+    legacyVisit(row, labs, treatments.plans, treatments.sessionsByPlan)))
 }
 
 export const getCompletedEncounters = (_doctorId, token) => fetchHistory(
@@ -82,7 +108,7 @@ export const getCompletedEncounters = (_doctorId, token) => fetchHistory(
 )
 
 export const getDoctorPatientHistory = (patientId, token) => fetchHistory(
-  `/encounters/patient/${encodeURIComponent(patientId)}`, '/orders/doctor', token,
+  `/encounters/patient/${encodeURIComponent(patientId)}`, '/orders/doctor', token, undefined, patientId,
 )
 
 export const getPatientMedicalHistory = async (_patientId, token) => {
@@ -115,9 +141,14 @@ export const getEncounterDetail = async (query, token) => {
     fetch(`${clinicalUrl}/encounters/${encodeURIComponent(encounterId)}`, { headers: authorization(token) }),
     fetch(`${laboratoryUrl}/orders/doctor`, { headers: authorization(token) }),
   ])
+  if (!encounterResponse.ok) return legacyResponse(encounterResponse, () => null)
+  if (!labResponse.ok) return legacyResponse(labResponse, () => null)
+  const encounter = await encounterResponse.clone().json()
+  const treatments = await fetchDoctorTreatments(token, encounter.patient_id)
+  if (treatments.failed) return legacyResponse(treatments.failed, () => null)
   const labs = labResponse.ok ? await labResponse.json() : []
   return legacyResponse(encounterResponse, (row) => {
-    const visit = legacyVisit(row, labs)
+    const visit = legacyVisit(row, labs, treatments.plans, treatments.sessionsByPlan)
     return { LuotKham: visit, XetNghiem: visit.XetNghiem, DonThuoc: visit.DonThuoc, DieuTri: visit.DieuTri }
   })
 }

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from common.app import create_app
 from common.history import history_router
 from clinical.api import router
+from clinical.change_api import router as change_router
 
 app = create_app(
     "clinical",
@@ -20,3 +21,4 @@ app.add_middleware(
 )
 app.include_router(history_router("clinical"))
 app.include_router(router)
+app.include_router(change_router)

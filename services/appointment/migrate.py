@@ -17,6 +17,10 @@ async def migrate() -> None:
                     for statement in statements:
                         if statement.strip():
                             await cursor.execute(statement)
+                    await cursor.execute("SHOW COLUMNS FROM appointments LIKE 'change_operation_id'")
+                    if await cursor.fetchone() is None:
+                        await cursor.execute('ALTER TABLE appointments ADD COLUMN change_operation_id CHAR(36) NULL')
+                    await cursor.execute('ALTER TABLE patient_notifications MODIFY COLUMN event VARCHAR(64) NOT NULL')
                     await cursor.execute(
                         "SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS "
                         "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointments' "

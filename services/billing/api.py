@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from billing.clients import BillingClients, InvalidAppointment, InvalidService, UpstreamUnavailable
 from billing.repository import InvoiceConflict, InvoiceRepository
 from common.identity_client import IdentityClient, IdentityUnavailable, InvalidIdentityToken
+from common.change_http import ChangeRejected, ChangeUnavailable
 
 
 router = APIRouter(prefix="/api/v1/billing", tags=["Billing"])
@@ -253,16 +254,22 @@ async def legacy_lab_charges(repository: Repository, account: Account,
 
 
 @router.post("/invoices/{invoice_id}/simulate-refund", response_model=InvoiceResponse)
-async def simulate_refund(invoice_id: str, repository: Repository, account: Account) -> InvoiceResponse:
+async def simulate_refund(invoice_id: str, repository: Repository, account: Account, clients: Clients,
+                          credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)]) -> InvoiceResponse:
     if account.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin role required")
-    try:
-        row = await repository.simulate_refund(invoice_id)
-    except InvoiceConflict as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    row=await repository.get(invoice_id)
     if row is None:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    return response(row)
+        raise HTTPException(status_code=404,detail='Invoice not found')
+    if row['status'] not in ('paid','refunded') or row['payment_method']!='simulated' or row.get('source','live')!='live':
+        raise HTTPException(409,'Chỉ hoàn hóa đơn hiện tại đã thanh toán mô phỏng.')
+    try:
+        await clients.refund_cancel(credentials.credentials,row['appointment_id'])
+    except ChangeRejected as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ChangeUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return response(await repository.get(invoice_id))
 
 
 @router.get("/internal/appointments/{appointment_id}/payment", response_model=InvoiceResponse)

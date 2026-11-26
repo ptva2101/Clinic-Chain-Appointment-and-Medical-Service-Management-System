@@ -14,6 +14,18 @@ class WorkflowRejected(Exception):
 
 
 class WorkflowClients:
+    async def cancel_unpaid(self, appointment_id):
+        from common.change_http import call_change, ChangeRejected, ChangeUnavailable
+        body={'operation_id':'patient:'+appointment_id,'action':'cancel'}
+        try:
+            result=await call_change('billing','POST',f'/api/v1/billing/internal/appointments/{appointment_id}/change',body)
+            await call_change('clinical','POST',f'/api/v1/clinical/internal/appointments/{appointment_id}/change',body)
+            return result
+        except ChangeRejected as exc:
+            raise WorkflowRejected(str(exc)) from exc
+        except ChangeUnavailable as exc:
+            raise WorkflowUnavailable(str(exc)) from exc
+
     async def patient_profiles(self, patient_ids: list[str]) -> dict[str, dict]:
         if not patient_ids:
             return {}

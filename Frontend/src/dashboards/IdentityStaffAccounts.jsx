@@ -16,6 +16,11 @@ const ACCOUNT_ROLES = [
   ...STAFF_ROLES,
 ]
 
+function normalizeAccountSearch(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('vi').replace(/đ/g, 'd').trim().replace(/\s+/g, ' ')
+}
+
 function profileSourceLabel(profile) {
   if (profile.source === 'legacy_demo' || profile.source === 'legacy_mysql') {
     return profile.identity_account_id ? 'Đã nhập · đã liên kết' : 'Đã nhập · chưa liên kết'
@@ -36,6 +41,9 @@ export default function IdentityStaffAccounts({ accessToken, currentAccountId, o
   const [accounts, setAccounts] = useState([])
   const [accountSearch, setAccountSearch] = useState('')
   const [accountPage, setAccountPage] = useState(0)
+  const [accountLoading, setAccountLoading] = useState(true)
+  const [accountError, setAccountError] = useState('')
+  const [accountReload, setAccountReload] = useState(0)
   const [toggleTarget, setToggleTarget] = useState(null)
   const [resetTarget, setResetTarget] = useState(null)
   const [form, setForm] = useState({
@@ -54,16 +62,22 @@ export default function IdentityStaffAccounts({ accessToken, currentAccountId, o
 
   const reload = async () => {
     setAccounts(await loadAllAccounts(accessToken))
+    setAccountError('')
   }
 
   useEffect(() => {
     if (!accessToken) return
     let active = true
     loadAllAccounts(accessToken)
-      .then((loaded) => { if (active) setAccounts(loaded) })
-      .catch((reason) => { if (active) setError(reason.message) })
+      .then((loaded) => {
+        if (active) { setAccounts(loaded); setAccountError('') }
+      })
+      .catch((reason) => {
+        if (active) { setAccounts([]); setAccountError(reason.message) }
+      })
+      .finally(() => { if (active) setAccountLoading(false) })
     return () => { active = false }
-  }, [accessToken])
+  }, [accessToken, accountReload])
 
   useEffect(() => {
     if (!accessToken) return
@@ -197,10 +211,11 @@ export default function IdentityStaffAccounts({ accessToken, currentAccountId, o
     }
   }
 
-  const normalizedSearch = accountSearch.trim().toLocaleLowerCase('vi')
+  const normalizedSearch = normalizeAccountSearch(accountSearch)
   const visibleAccounts = normalizedSearch
-    ? accounts.filter((account) => [account.username, account.subject_id, account.role]
-      .some((value) => String(value || '').toLocaleLowerCase('vi').includes(normalizedSearch)))
+    ? accounts.filter((account) => [account.username, account.subject_id, account.role,
+      ACCOUNT_ROLES.find((role) => role.value === account.role)?.label]
+      .some((value) => normalizeAccountSearch(value).includes(normalizedSearch)))
     : accounts
 
   return (
@@ -210,6 +225,7 @@ export default function IdentityStaffAccounts({ accessToken, currentAccountId, o
           <h2>Tài khoản đăng nhập</h2>
           <p>Admin cấp tài khoản nhân viên và quản lý mật khẩu của mọi vai trò. Bảng hồ sơ bên dưới lấy dữ liệu từ Registry.</p>
         </div>
+        <button type="button" className="admin-secondary-button" disabled={busy || accountLoading} onClick={() => { setAccountLoading(true); setAccountReload((value) => value + 1); onChanged?.() }}>Làm mới</button>
       </div>
       <form className="admin-form-grid" onSubmit={create}>
         <label>Vai trò
@@ -245,11 +261,12 @@ export default function IdentityStaffAccounts({ accessToken, currentAccountId, o
         <span>Tìm tài khoản</span>
         <input className="admin-input" value={accountSearch} maxLength={128} placeholder="Mã đăng nhập, mã hồ sơ hoặc vai trò" onChange={(event) => { setAccountSearch(event.target.value); setAccountPage(0) }} />
       </label>
+      {accountError && <p role="alert" className="admin-feedback">{accountError}</p>}
       <div className="admin-table-wrap">
         <table className="admin-table">
           <thead><tr><th>Vai trò</th><th>Mã đăng nhập</th><th>Mã hồ sơ/nhân sự</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
           <tbody>
-            {getPageRows(visibleAccounts, accountPage).map((account) => (
+            {!accountLoading && !accountError && getPageRows(visibleAccounts, accountPage).map((account) => (
               <tr key={account.id}>
                 <td>{ACCOUNT_ROLES.find((role) => role.value === account.role)?.label || account.role}</td>
                 <td>{account.username}</td>
@@ -265,11 +282,11 @@ export default function IdentityStaffAccounts({ accessToken, currentAccountId, o
                 </td>
               </tr>
             ))}
-            {visibleAccounts.length === 0 && <tr><td colSpan="5">Không tìm thấy tài khoản phù hợp.</td></tr>}
+            {(accountLoading || accountError || visibleAccounts.length === 0) && <tr><td colSpan="5">{accountLoading ? 'Đang tải tài khoản...' : accountError ? 'Không thể tải tài khoản. Hãy thử làm mới.' : 'Không tìm thấy tài khoản phù hợp.'}</td></tr>}
           </tbody>
         </table>
       </div>
-      <TablePagination page={accountPage} total={visibleAccounts.length} label="tài khoản" onPageChange={setAccountPage} />
+      {!accountError && <TablePagination page={accountPage} total={visibleAccounts.length} label="tài khoản" disabled={accountLoading} onPageChange={setAccountPage} />}
       {toggleTarget && (
         <div className="admin-modal-overlay">
           <section className="admin-transfer-modal" role="dialog" aria-modal="true" aria-labelledby="admin-toggle-title">

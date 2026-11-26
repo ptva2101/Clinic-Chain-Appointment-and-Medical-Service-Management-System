@@ -91,7 +91,7 @@ class TreatmentSessionResponse(BaseModel):
     shift: int | None
     appointment_id: str | None
     invoice_id: str | None
-    status: Literal["pending", "booked", "completed", "historical_unbooked"]
+    status: Literal["pending", "booked", "completed", "historical_unbooked", "cancelled"]
     source: str = "live"
     created_at: datetime
     updated_at: datetime
@@ -311,11 +311,25 @@ async def my_treatment_plans(repository: Repository, current: Account) -> list[T
     return [TreatmentPlanResponse.model_validate(row) for row in await repository.list_plans(patient_id)]
 
 
+@router.get("/treatments/doctor", response_model=list[TreatmentPlanResponse])
+async def doctor_treatment_plans(
+    repository: Repository, current: Account, patient_id: str | None = None,
+) -> list[TreatmentPlanResponse]:
+    """Read the authenticated doctor's plans, optionally for one patient."""
+    doctor_code = require_role(current, "doctor")
+    return [TreatmentPlanResponse.model_validate(row) for row in await repository.list_plans(
+        patient_id=patient_id, doctor_code=doctor_code)]
+
+
 @router.get("/treatments/{plan_id}/sessions", response_model=list[TreatmentSessionResponse])
 async def treatment_sessions(plan_id: str, repository: Repository, current: Account) -> list[TreatmentSessionResponse]:
-    patient_id = require_role(current, "patient")
+    """Read-only access for the owning patient or the doctor who prescribed the plan."""
+    if current.get("role") not in ("patient", "doctor"):
+        raise HTTPException(status_code=403, detail="Patient or doctor role required")
+    subject = require_role(current, current["role"])
     plan = await repository.get_plan(plan_id)
-    if plan is None or plan["patient_id"] != patient_id:
+    owner_key = "patient_id" if current["role"] == "patient" else "doctor_code"
+    if plan is None or plan[owner_key] != subject:
         raise HTTPException(status_code=404, detail="Treatment plan not found")
     return [session_response(row) for row in await repository.list_sessions(plan_id)]
 

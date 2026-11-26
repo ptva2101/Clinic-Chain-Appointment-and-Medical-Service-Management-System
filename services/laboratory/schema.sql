@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS lab_orders (
     payment_method VARCHAR(24) NULL,
     payment_token VARCHAR(64) NULL,
     technician_code VARCHAR(128) NULL,
+    technician_name_snapshot VARCHAR(160) NULL,
     result_text TEXT NULL,
     notes TEXT NULL,
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),

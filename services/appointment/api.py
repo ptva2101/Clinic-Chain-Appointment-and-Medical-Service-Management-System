@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from appointment.repository import AppointmentConflict, AppointmentNotFound, AppointmentRepository
 from appointment.scheduling_client import SchedulingClient, SchedulingRejected, SchedulingUnavailable
-from appointment.workflow_clients import WorkflowClients, WorkflowUnavailable
+from appointment.workflow_clients import WorkflowClients, WorkflowUnavailable, WorkflowRejected
 from common.identity_client import IdentityClient, IdentityUnavailable, InvalidIdentityToken
 
 
@@ -118,7 +118,10 @@ def scheduling_error(exc: SchedulingRejected) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=str(exc))
 
 
-@router.post("", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED,
+             description="Đặt lịch qua Scheduling. Mỗi bệnh nhân chỉ có một lịch đang giữ/đã xác nhận "
+                         "trong cùng ngày và ca, kể cả khác dịch vụ, bác sĩ hoặc chi nhánh.",
+             responses={409: {"description": "Bệnh nhân đã có lịch/giữ chỗ trong ca này hoặc ca không còn chỗ."}})
 async def book(
     body: BookingRequest, repository: Repository, scheduling: Scheduling,
     account: Account,
@@ -227,6 +230,8 @@ async def cancel(
         raise HTTPException(status_code=404, detail="Appointment not found")
     if row["status"] == "cancelled":
         return response(row)
+    if row.get('change_operation_id'):
+        raise HTTPException(409,'Lịch hẹn đang được Admin hoàn tiền hoặc đổi ca, vui lòng chờ.')
     if row["status"] not in ("confirmed", "cancel_pending"):
         raise HTTPException(status_code=409, detail="Appointment is not cancellable")
     try:
@@ -237,12 +242,19 @@ async def cancel(
         raise HTTPException(status_code=409, detail="Paid appointment requires refund orchestration before cancellation")
     try:
         row = await repository.set_status(row["id"], ("confirmed", "cancel_pending"), "cancel_pending")
+        try:
+            await billing.cancel_unpaid(appointment_id)
+        except WorkflowRejected as exc:
+            await repository.set_status(row['id'],('cancel_pending',),'confirmed')
+            raise HTTPException(409,str(exc)) from exc
         released = await scheduling.release(row["hold_id"])
     except (AppointmentConflict, AppointmentNotFound) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except SchedulingRejected as exc:
         raise scheduling_error(exc) from exc
     except SchedulingUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except WorkflowUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     if released.get("state") not in ("released", "expired"):
         raise HTTPException(status_code=503, detail="Scheduling release is uncertain")

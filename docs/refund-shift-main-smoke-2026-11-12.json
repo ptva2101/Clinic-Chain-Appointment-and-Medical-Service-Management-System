@@ -1,0 +1,42 @@
+{
+  "date": "2026-11-12",
+  "results": [
+    {
+      "port": 8001,
+      "ready": "PASS",
+      "updated_openapi": "unchanged"
+    },
+    {
+      "port": 8002,
+      "ready": "PASS",
+      "updated_openapi": "unchanged"
+    },
+    {
+      "port": 8003,
+      "ready": "PASS",
+      "updated_openapi": "PASS"
+    },
+    {
+      "port": 8004,
+      "ready": "PASS",
+      "updated_openapi": "PASS"
+    },
+    {
+      "port": 8005,
+      "ready": "PASS",
+      "updated_openapi": "PASS"
+    },
+    {
+      "port": 8006,
+      "ready": "PASS",
+      "updated_openapi": "PASS"
+    },
+    {
+      "port": 8007,
+      "ready": "PASS",
+      "updated_openapi": "unchanged"
+    }
+  ],
+  "main_change_operations": 0,
+  "browser_test_holds": 0
+}

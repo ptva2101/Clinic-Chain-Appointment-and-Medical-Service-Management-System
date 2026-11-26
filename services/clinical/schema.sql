@@ -48,11 +48,13 @@ CREATE TABLE IF NOT EXISTS treatment_sessions (
     source VARCHAR(32) NOT NULL DEFAULT 'live',
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    UNIQUE KEY uq_session_number (plan_id, session_number),
+    active_session_number SMALLINT UNSIGNED GENERATED ALWAYS AS
+        (CASE WHEN status = 'cancelled' THEN NULL ELSE session_number END) STORED,
+    UNIQUE KEY uq_active_session_number (plan_id, active_session_number),
     UNIQUE KEY uq_plan_request (plan_id, patient_request_key),
     UNIQUE KEY uq_treatment_appointment (appointment_id),
     CONSTRAINT fk_session_plan FOREIGN KEY (plan_id) REFERENCES treatment_plans(id),
-    CONSTRAINT ck_session_status CHECK (status IN ('pending', 'booked', 'completed', 'historical_unbooked'))
+    CONSTRAINT ck_session_status CHECK (status IN ('pending', 'booked', 'completed', 'historical_unbooked', 'cancelled'))
 );
 
 CREATE TABLE IF NOT EXISTS disease_catalog (

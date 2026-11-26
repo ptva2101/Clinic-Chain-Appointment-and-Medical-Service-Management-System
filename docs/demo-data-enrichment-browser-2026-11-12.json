@@ -1,0 +1,26 @@
+{
+  "results": [
+    {
+      "case": "Admin reports display enriched revenue, both branches and all 33 doctors for August-November",
+      "status": "PASS"
+    },
+    {
+      "case": "CN01 receptionist shows 4 named patients with matching services and usable check-in buttons",
+      "status": "PASS"
+    },
+    {
+      "case": "CN02 receptionist shows 4 named patients with matching services and usable check-in buttons",
+      "status": "PASS"
+    },
+    {
+      "case": "990000000001 patient can open completed demo visits in the health record",
+      "status": "PASS"
+    },
+    {
+      "case": "990000000002 patient can open completed demo visits in the health record",
+      "status": "PASS"
+    }
+  ],
+  "javascriptErrors": [],
+  "scope": "Read-only live browser checks; no waiting patient was checked in or modified"
+}

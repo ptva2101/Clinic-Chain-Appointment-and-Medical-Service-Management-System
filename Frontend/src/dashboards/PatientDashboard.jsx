@@ -6,6 +6,7 @@ import { NotificationBell } from '../shared/Widgets.jsx'
 import { bookTreatment, cancelPatientAppointment, createPatientAppointment, getPatientAppointments, getPatientNotifications } from '../api/appointment.js'
 import { getPatientMedicalHistory } from '../api/clinical.js'
 import { getSchedulingAvailability } from '../api/scheduling.js'
+import useSlotAvailability, { refreshSlotAvailability } from '../shared/useSlotAvailability.js'
 import { getPatientProfile, updatePatientProfile } from '../api/patientProfile.js'
 import { createPatientInvoice, getPatientInvoices, simulatePatientPayment } from '../api/billing.js'
 import { getFutureDateKey, getTodayDateKey } from '../shared/dates.js'
@@ -130,6 +131,15 @@ export default function PatientDashboard({
     })
   const allKnownBranchServices = effectiveBranchServices
   const allKnownDoctorSchedules = effectiveDoctorSchedules
+
+  const bookingConfigCode = effectiveBranchServices.find((config) =>
+    config.MaChiNhanh === bookingForm.MaChiNhanh && config.MaDichVu === bookingForm.MaDichVu)?.MaCauHinh
+  const activeTreatment = treatmentSchedules.find((item) => item.MaLichTrinh === activeTreatmentId)
+  const activeTreatmentDraft = treatmentDrafts[activeTreatmentId]
+  const treatmentConfigCode = activeTreatment && effectiveBranchServices.find((config) =>
+    config.MaChiNhanh === activeTreatmentDraft?.MaChiNhanh && config.MaDichVu === activeTreatment.MaDichVu)?.MaCauHinh
+  const bookingAvailability = useSlotAvailability(bookingConfigCode, bookingForm.NgayKham)
+  const treatmentAvailability = useSlotAvailability(treatmentConfigCode, activeTreatmentDraft?.NgayKham)
 
   const normalizeAppointmentRow = (appointment) => ({
     MaLichHen: appointment.id || appointment.MaLichHen,
@@ -259,6 +269,7 @@ export default function PatientDashboard({
         TenDichVu: item.TenDichVu,
         KetQuaXetNghiem: item.KetQuaXetNghiem || '',
         MaXNV: item.MaXNV || '',
+        TenXNV: item.TenXNV || '',
         GiaCuoi: item.GiaCuoi || 0,
         PaymentToken: item.PaymentToken || '',
         TrangThaiXetNghiem: item.TrangThaiXetNghiem || 'Chưa thực hiện',
@@ -330,7 +341,8 @@ export default function PatientDashboard({
           ...current.filter((booking) => !historyIds.has(booking.MaLichHen)),
         ]
       })
-      setSelectedVisitId(normalized.nextVisits[0]?.MaLuotKham || '')
+      setSelectedVisitId((current) => normalized.nextVisits.some((visit) => visit.MaLuotKham === current)
+        ? current : normalized.nextVisits[0]?.MaLuotKham || '')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể tải sổ khám bệnh.'
       setMedicalHistoryError(message)
@@ -420,7 +432,7 @@ export default function PatientDashboard({
     }
 
 	  const getLabTechnicianName = (maXNV) =>
-	    labTechnicians.find((technician) => technician.MaXNV === maXNV)?.HoTen || 'Chưa phân công'
+	    labTechnicians.find((technician) => technician.MaXNV === maXNV)?.HoTen || maXNV || 'Chưa phân công'
 
   const getBhytRate = () => patient.BHYTVerified
     ? effectiveBhytCategories.find((category) => category.KyTuDauBHYT === patient.KyTuDauBHYT)?.TyLeHuong || 0
@@ -498,25 +510,41 @@ export default function PatientDashboard({
     caKham: params.caKham ?? params.CaKham ?? '',
   })
 
-  const getBookedCountForSlot = (params) => {
-    const { maChiNhanh, ngayKham, caKham } = normalizeScheduleParams(params)
-    return bookings.filter(
-      (booking) =>
-        booking.MaChiNhanh === maChiNhanh &&
-        booking.NgayKham === ngayKham &&
-        Number(booking.CaKham) === Number(caKham) &&
-        !String(booking.TrangThai || '').includes('Đã hủy'),
-    ).length
-  }
-
   const getSlotLimit = (params) => {
     const { maChiNhanh, maDichVu } = normalizeScheduleParams(params)
     const config = getBranchConfig(maChiNhanh, maDichVu)
-    return config ? Number(config.SlotGioiHan || 15) : 0
+    return config ? Number(config.SlotGioiHan ?? 0) : 0
   }
 
-  const getRemainingSlots = (params) =>
-    Math.max(0, getSlotLimit(params) - getBookedCountForSlot(params))
+  const getAvailabilityForSlot = (params) => {
+    const { maChiNhanh, maDichVu, ngayKham } = normalizeScheduleParams(params)
+    const config = getBranchConfig(maChiNhanh, maDichVu)
+    const key = config && ngayKham ? `${config.MaCauHinh}:${ngayKham}` : ''
+    const matches = [bookingAvailability, treatmentAvailability].filter((item) => item.key === key)
+    return matches.find((item) => item.ready) || matches[0]
+  }
+
+  const getRemainingSlots = (params) => {
+    if (getSlotLimit(params) < 1) return 0
+    const { caKham } = normalizeScheduleParams(params)
+    return getAvailabilityForSlot(params)?.rows[Number(caKham)]?.available ?? null
+  }
+
+  const getSlotLabel = (params) => {
+    const remaining = getRemainingSlots(params)
+    if (remaining !== null) return `còn ${remaining} slot`
+    return getAvailabilityForSlot(params)?.error ? 'Chưa tải được số chỗ' : 'Đang cập nhật số chỗ...'
+  }
+
+  const hasPatientSlotConflict = (params) => {
+    const { ngayKham, caKham } = normalizeScheduleParams(params)
+    return Boolean(ngayKham && caKham && bookings.some((booking) =>
+      booking.NgayKham === ngayKham && Number(booking.CaKham) === Number(caKham)
+      && (['pending', 'confirmed', 'cancel_pending'].includes(booking.apiStatus)
+        || ['Đã xác nhận', 'Đang xác nhận', 'Đang hủy', 'Chờ khám', 'Đang khám', 'Chờ kết luận'].includes(booking.TrangThai))))
+  }
+
+  const duplicateSlotMessage = 'Bạn đã có lịch hẹn trong ca này. Vui lòng chọn ca khác hoặc hủy lịch cũ nếu đủ điều kiện.'
 
   const isScheduleActive = (schedule) => !schedule.TrangThai || schedule.TrangThai === 'Đang hoạt động'
 
@@ -531,7 +559,7 @@ export default function PatientDashboard({
           Number(schedule.CaTruc) === Number(shift) &&
           isScheduleActive(schedule),
       )
-      const bookedCount = getBookedCountForSlot({
+      const remaining = getRemainingSlots({
         maChiNhanh,
         maDichVu,
         ngayKham,
@@ -539,7 +567,7 @@ export default function PatientDashboard({
       })
       const slotLimit = getSlotLimit({ maChiNhanh, maDichVu })
 
-      return hasWorkingDoctor && bookedCount < slotLimit
+      return hasWorkingDoctor && slotLimit > 0 && (remaining === null || remaining > 0)
     })
 
     return result
@@ -603,12 +631,12 @@ export default function PatientDashboard({
             isScheduleActive(schedule) &&
             schedule.NgayTruc >= patientBookingStartDate &&
             schedule.NgayTruc <= patientBookingEndDate &&
-            getRemainingSlots({
+            (getRemainingSlots({
               maChiNhanh,
               maDichVu,
               ngayKham: schedule.NgayTruc,
               caKham: schedule.CaTruc,
-            }) > 0,
+            }) ?? 1) > 0,
         )
       })
       .sort((first, second) => first.HoTen.localeCompare(second.HoTen, 'vi'))
@@ -628,12 +656,12 @@ export default function PatientDashboard({
         schedule.NgayTruc === dateKey &&
         Number(schedule.CaTruc) === Number(shift) &&
         isScheduleActive(schedule) &&
-        getRemainingSlots({
+        (getRemainingSlots({
           maChiNhanh: bookingForm.MaChiNhanh,
           maDichVu: bookingForm.MaDichVu,
           ngayKham: dateKey,
           caKham: shift,
-        }) > 0,
+        }) ?? 1) > 0,
     )
 
   const getDefaultSlotSelection = (params) => {
@@ -719,7 +747,7 @@ export default function PatientDashboard({
   useEffect(() => {
     const timer = window.setTimeout(() => onSyncBookingForm(), 0)
     return () => window.clearTimeout(timer)
-  }, [catalogData, bookingMethod])
+  }, [catalogData, bookingMethod, bookingAvailability.rows])
 
   const onLoadPatientData = useEffectEvent(() => {
     void loadPatientAppointments()
@@ -733,6 +761,27 @@ export default function PatientDashboard({
   }, [patient.MaBenhAn, identityAccessToken])
 
   const bookingAvailableShifts = getAvailableShifts(bookingForm)
+  const onRefreshPatientStatus = useEffectEvent(async () => {
+    await Promise.allSettled([loadPatientAppointments(), loadPatientInvoices(), loadPatientNotifications()])
+    if (activeMenu === 'treatment') await loadMedicalHistory()
+  })
+  useEffect(() => {
+    if (!identityAccessToken) return undefined
+    let busy = false
+    const refresh = async () => {
+      if (busy || document.visibilityState === 'hidden') return
+      busy = true
+      try { await onRefreshPatientStatus() } finally { busy = false }
+    }
+    const timer = window.setInterval(refresh, 15000)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [identityAccessToken, patient.MaBenhAn])
   const bookingAvailableDoctors = getAvailableDoctorsForShift({
     maChiNhanh: bookingForm.MaChiNhanh,
     maDichVu: bookingForm.MaDichVu,
@@ -1053,6 +1102,10 @@ export default function PatientDashboard({
   }
 
   const openBookingPayment = async () => {
+    if (hasPatientSlotConflict(bookingForm)) {
+      showNotification?.(duplicateSlotMessage, 'error')
+      return
+    }
     if (!bookingForm.CaKham || !bookingForm.MaBacSi) {
       showNotification?.('Hiện chưa có ca trống phù hợp. Vui lòng chọn ngày hoặc chi nhánh khác.', 'error')
       return
@@ -1101,6 +1154,10 @@ export default function PatientDashboard({
 
   const openTreatmentPayment = (treatment) => {
     const draft = treatmentDrafts[treatment.MaLichTrinh]
+    if (hasPatientSlotConflict(draft || {})) {
+      showNotification?.(duplicateSlotMessage, 'error')
+      return
+    }
     if (!draft?.CaKham || !draft?.MaBacSi) {
       showNotification?.('Hiện chưa có ca điều trị trống phù hợp. Vui lòng chọn ngày hoặc chi nhánh khác.', 'error')
       return
@@ -1153,6 +1210,7 @@ export default function PatientDashboard({
         }
 
         const nextBooking = normalizeAppointmentRow(result)
+        refreshSlotAvailability()
         setBookings((current) => [nextBooking, ...current.filter((booking) => booking.MaLichHen !== nextBooking.MaLichHen)])
         let invoiceCreated = false
         try {
@@ -1168,6 +1226,7 @@ export default function PatientDashboard({
           : 'Đã đặt lịch nhưng chưa tạo được hóa đơn. Mở “Lịch hẹn của tôi” để thử lại.',
         invoiceCreated ? 'success' : 'error')
       } catch (error) {
+        refreshSlotAvailability()
         const message = error instanceof Error ? error.message : 'Không thể tạo lịch hẹn.'
         showNotification?.(message, 'error')
       } finally {
@@ -1198,6 +1257,7 @@ export default function PatientDashboard({
 	        }
 
 	        const appointment = result.data?.appointment
+        refreshSlotAvailability()
 	        const treatment = result.data?.treatment
 
 	        if (appointment) {
@@ -1251,6 +1311,7 @@ export default function PatientDashboard({
       const response = await cancelPatientAppointment(identityAccessToken, booking.MaLichHen)
       const result = await response.json()
       if (!response.ok) throw new Error(typeof result?.detail === 'string' ? result.detail : 'Không thể hủy lịch hẹn.')
+      refreshSlotAvailability()
       setBookings((current) => current.map((item) => item.MaLichHen === booking.MaLichHen ? normalizeAppointmentRow(result) : item))
       await loadPatientAppointments()
       showNotification?.('Đã hủy lịch hẹn.')
@@ -1275,6 +1336,7 @@ export default function PatientDashboard({
         const result = await response.json()
         if (!response.ok) throw new Error(typeof result?.detail === 'string' ? result.detail : 'Không thể ghi nhận thanh toán.')
         setInvoicesByAppointment((current) => ({ ...current, [booking.MaLichHen]: result }))
+        refreshSlotAvailability()
         showNotification?.('Đã ghi nhận thanh toán.')
       }
     } catch (error) {
@@ -1360,7 +1422,8 @@ export default function PatientDashboard({
 	        bookingForm.NgayKham &&
 	        bookingForm.CaKham &&
 	        bookingForm.MaBacSi &&
-	        selectedBranchConfig,
+	        selectedBranchConfig &&
+        getRemainingSlots(bookingForm) > 0 && !hasPatientSlotConflict(bookingForm),
 	    )
 
     const renderDoctorBookingGrid = () => {
@@ -1524,14 +1587,12 @@ export default function PatientDashboard({
                 {bookingAvailableShifts.length === 0 && <option value="">Không có ca trống</option>}
                 {bookingAvailableShifts.map((shift) => (
                   <option key={shift} value={shift}>
-                    {getShiftTimeLabel(shift)} - còn{' '}
-                    {getRemainingSlots({
+                    {getShiftTimeLabel(shift)} - {getSlotLabel({
                       maChiNhanh: bookingForm.MaChiNhanh,
                       maDichVu: bookingForm.MaDichVu,
                       ngayKham: bookingForm.NgayKham,
                       caKham: shift,
-                    })}{' '}
-                    slot
+                    })}
                   </option>
                 ))}
               </select>
@@ -1637,6 +1698,8 @@ export default function PatientDashboard({
         >
           {isCheckingAvailability ? 'Đang kiểm tra chỗ trống...' : 'Xác nhận đặt lịch'}
         </button>
+        {bookingAvailability.error && <p role="alert" className="auth-catalog-error">Không thể cập nhật số chỗ: {bookingAvailability.error} <button type="button" className="patient-secondary-button" onClick={refreshSlotAvailability}>Thử lại</button></p>}
+        {hasPatientSlotConflict(bookingForm) && <p role="alert" className="auth-catalog-error">{duplicateSlotMessage}</p>}
       </div>
     )
   }
@@ -1778,14 +1841,12 @@ export default function PatientDashboard({
           {shifts.length === 0 && <option value="">Không có ca trống</option>}
           {shifts.map((shift) => (
             <option key={shift} value={shift}>
-              {getShiftTimeLabel(shift)} - còn{' '}
-              {getRemainingSlots({
+              {getShiftTimeLabel(shift)} - {getSlotLabel({
                 maChiNhanh: draft.MaChiNhanh,
                 maDichVu: treatment.MaDichVu,
                 ngayKham: draft.NgayKham,
                 caKham: shift,
-              })}{' '}
-              slot
+              })}
             </option>
           ))}
         </select>
@@ -1816,9 +1877,12 @@ export default function PatientDashboard({
           type="button"
           className="patient-primary-button"
           onClick={() => openTreatmentPayment(treatment)}
+          disabled={getRemainingSlots({ ...draft, MaDichVu: treatment.MaDichVu }) < 1 || !treatmentAvailability.ready || hasPatientSlotConflict(draft)}
         >
           Tiến hành thanh toán
         </button>
+        {treatmentAvailability.error && <p role="alert" className="auth-catalog-error">Không thể cập nhật số chỗ: {treatmentAvailability.error} <button type="button" className="patient-secondary-button" onClick={refreshSlotAvailability}>Thử lại</button></p>}
+        {hasPatientSlotConflict(draft) && <p role="alert" className="auth-catalog-error">{duplicateSlotMessage}</p>}
       </div>
     )
   }
@@ -1992,7 +2056,7 @@ export default function PatientDashboard({
                       <p>
                         {lab.KetQuaXetNghiem}
                         <br />
-                        Xét nghiệm viên: {getLabTechnicianName(lab.MaXNV)}
+                        Xét nghiệm viên: {lab.TenXNV || getLabTechnicianName(lab.MaXNV)}
                       </p>
                     )}
                   </article>

@@ -1,0 +1,25 @@
+{
+  "results": [
+    {
+      "case": "Fresh login restores examining row, saved draft and completed laboratory result",
+      "status": "PASS"
+    },
+    {
+      "case": "F5 while examining allows resuming again without repeated queue-state POST",
+      "status": "PASS"
+    },
+    {
+      "case": "Conclusion row retains its recall transition (browser response mocked)",
+      "status": "PASS"
+    },
+    {
+      "case": "Completed row is excluded from active work (browser response mocked)",
+      "status": "PASS"
+    },
+    {
+      "case": "Existing appointment and draft preserved, no browser JavaScript errors",
+      "status": "PASS"
+    }
+  ],
+  "javascriptErrors": []
+}

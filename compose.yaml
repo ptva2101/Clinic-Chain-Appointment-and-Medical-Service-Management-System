@@ -78,6 +78,7 @@ services:
     command: ["sh", "-c", "python -m scheduling.migrate && exec uvicorn scheduling.main:app --host 0.0.0.0 --port 8000"]
     environment:
       DB_HOST: mysql
+      APPOINTMENT_INTERNAL_TOKEN: ${APPOINTMENT_INTERNAL_TOKEN:-replace_this_appointment_coordination_token_before_deployment}
       DB_PORT: "3306"
       DB_NAME: scheduling_db
       DB_USER: scheduling_app
@@ -95,6 +96,7 @@ services:
     command: ["sh", "-c", "python -m appointment.migrate && exec uvicorn appointment.main:app --host 0.0.0.0 --port 8000"]
     environment:
       DB_HOST: mysql
+      APPOINTMENT_INTERNAL_TOKEN: ${APPOINTMENT_INTERNAL_TOKEN:-replace_this_appointment_coordination_token_before_deployment}
       DB_PORT: "3306"
       DB_NAME: appointment_db
       DB_USER: appointment_app
@@ -126,6 +128,7 @@ services:
     command: ["python", "-m", "appointment.reconcile"]
     environment:
       DB_HOST: mysql
+      APPOINTMENT_INTERNAL_TOKEN: ${APPOINTMENT_INTERNAL_TOKEN:-replace_this_appointment_coordination_token_before_deployment}
       DB_PORT: "3306"
       DB_NAME: appointment_db
       DB_USER: appointment_app
@@ -143,6 +146,7 @@ services:
     command: ["sh", "-c", "python -m billing.migrate && exec uvicorn billing.main:app --host 0.0.0.0 --port 8000"]
     environment:
       DB_HOST: mysql
+      APPOINTMENT_INTERNAL_TOKEN: ${APPOINTMENT_INTERNAL_TOKEN:-replace_this_appointment_coordination_token_before_deployment}
       DB_PORT: "3306"
       DB_NAME: billing_db
       DB_USER: billing_app
@@ -161,6 +165,7 @@ services:
     command: ["sh", "-c", "python -m clinical.migrate && exec uvicorn clinical.main:app --host 0.0.0.0 --port 8000"]
     environment:
       DB_HOST: mysql
+      APPOINTMENT_INTERNAL_TOKEN: ${APPOINTMENT_INTERNAL_TOKEN:-replace_this_appointment_coordination_token_before_deployment}
       DB_PORT: "3306"
       DB_NAME: clinical_db
       DB_USER: clinical_app

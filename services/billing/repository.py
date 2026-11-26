@@ -13,7 +13,7 @@ COLUMNS = (
     "list_price, insurance_discount, amount_due, status, payment_method, "
     "payment_token, paid_at, created_at, updated_at, branch_code, doctor_code, "
     "insurance_card_number, insurance_category_code, insurance_verified, coverage_bps, "
-    "refunded_at, source, legacy_date"
+    "refunded_at, source, legacy_date, cancel_operation_id"
 )
 
 
@@ -22,6 +22,35 @@ class InvoiceConflict(Exception):
 
 
 class InvoiceRepository:
+    async def settle_change(self, appointment_id, operation_id, proof):
+        pool=await self.database.pool()
+        async with pool.acquire() as db:
+            try:
+                async with db.cursor() as cur:
+                    await cur.execute(f'SELECT {COLUMNS} FROM invoices WHERE appointment_id=%s FOR UPDATE',(appointment_id,))
+                    row=await cur.fetchone()
+                    if row is None:
+                        await db.rollback()
+                        return {'refunded_amount':0}
+                    if proof['action']=='transfer':
+                        if row['source']=='live':
+                            await cur.execute('UPDATE invoices SET doctor_code=%s WHERE id=%s',(proof['new_doctor_code'],row['id']))
+                        amount=0
+                    else:
+                        if row['status']=='paid':
+                            if not proof['allow_refund']:
+                                raise InvoiceConflict('Lịch đã thanh toán; cần Admin hoàn tiền và hủy lịch.')
+                            if row['source']!='live' or row['payment_method']!='simulated':
+                                raise InvoiceConflict('Hóa đơn lịch sử không hỗ trợ hoàn tiền.')
+                            await cur.execute("UPDATE invoices SET status='refunded',refunded_at=UTC_TIMESTAMP(6) WHERE id=%s",(row['id'],))
+                        await cur.execute('UPDATE invoices SET cancel_operation_id=%s WHERE id=%s',(operation_id,row['id']))
+                        amount=int(row['amount_due']) if row['status'] in ('paid','refunded') else 0
+                await db.commit()
+                return {'refunded_amount':amount}
+            except Exception:
+                await db.rollback()
+                raise
+
     def __init__(self, database: MySQLDatabase) -> None:
         self.database = database
 
@@ -137,7 +166,7 @@ class InvoiceRepository:
                     if row["status"] == "paid":
                         await connection.rollback()
                         return row
-                    if row["status"] != "pending":
+                    if row["status"] != "pending" or row.get('cancel_operation_id'):
                         raise InvoiceConflict("Invoice cannot be paid")
                     await cursor.execute(
                         "UPDATE invoices SET status = 'paid', payment_method = 'simulated', "

@@ -10,7 +10,7 @@ from common.database import MySQLDatabase
 COLUMNS = (
     "id, encounter_id, appointment_id, patient_id, branch_code, doctor_code, "
     "service_code, list_price, status, payment_method, payment_token, "
-    "technician_code, result_text, notes, created_at, updated_at"
+    "technician_code, technician_name_snapshot, result_text, notes, created_at, updated_at"
 )
 
 

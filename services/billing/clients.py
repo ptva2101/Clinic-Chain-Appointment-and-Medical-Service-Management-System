@@ -18,6 +18,10 @@ class InvalidService(Exception):
 
 
 class BillingClients:
+    async def refund_cancel(self, token, appointment_id):
+        from common.change_http import call_change
+        return await call_change('appointment','POST',f'/api/v1/appointments/admin/{appointment_id}/refund-cancel',bearer=token)
+
     async def appointment(self, token: str, appointment_id: str) -> dict:
         base = os.getenv("APPOINTMENT_INTERNAL_URL", "http://appointment:8000").rstrip("/")
         try:

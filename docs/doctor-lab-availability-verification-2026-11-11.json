@@ -1,0 +1,30 @@
+{
+  "date": "2026-11-11",
+  "results": [
+    {
+      "case": "Lab choices match active Registry services; inactive CT abdomen DV030 excluded",
+      "status": "PASS"
+    },
+    {
+      "case": "Treatment choices also exclude inactive services",
+      "status": "PASS"
+    },
+    {
+      "case": "Duplicate lab selection is blocked before saving",
+      "status": "PASS"
+    },
+    {
+      "case": "Only unsent lab orders can be removed; saved orders are preserved",
+      "status": "PASS"
+    },
+    {
+      "case": "Pause payload includes retained active lab only (POST intercepted; no clinical write)",
+      "status": "PASS"
+    },
+    {
+      "case": "Real queue and encounters unchanged; no JavaScript errors",
+      "status": "PASS"
+    }
+  ],
+  "javascriptErrors": []
+}

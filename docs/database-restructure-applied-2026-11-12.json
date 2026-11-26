@@ -1,0 +1,173 @@
+{
+  "before": {
+    "identity": {
+      "accounts": 89,
+      "refresh_tokens": 224
+    },
+    "registry": {
+      "staff_profiles": 70,
+      "branches": 5,
+      "medical_services": 98,
+      "branch_services": 193,
+      "patients": 16
+    },
+    "scheduling": {
+      "doctor_schedules": 2018,
+      "slot_holds": 4,
+      "slot_inventory": 3
+    },
+    "appointment": {
+      "appointments": 58,
+      "appointment_checkins": 44,
+      "patient_notifications": 19,
+      "appointment_queue_counters": 24
+    },
+    "billing": {
+      "invoices": 53,
+      "legacy_lab_charges": 13
+    },
+    "clinical": {
+      "encounters": 23,
+      "treatment_plans": 10,
+      "treatment_sessions": 17
+    },
+    "laboratory": {
+      "lab_orders": 16
+    }
+  },
+  "delete": {
+    "appointment": {
+      "appointments": 9,
+      "appointment_checkins": 4,
+      "patient_notifications": 4
+    },
+    "clinical": {
+      "encounters": 3,
+      "treatment_plans": 2,
+      "treatment_sessions": 1
+    },
+    "laboratory": {
+      "lab_orders": 3
+    },
+    "billing": {
+      "invoices": 4,
+      "legacy_lab_charges": 0
+    },
+    "scheduling": {
+      "doctor_schedules": 290,
+      "slot_holds": 4,
+      "slot_inventory": 3
+    },
+    "registry": {
+      "staff_profiles": 33,
+      "branch_services": 63,
+      "medical_services": 33,
+      "branches": 3
+    },
+    "identity": {
+      "accounts": 33
+    }
+  },
+  "queue_counters_to_delete": 2,
+  "target": {
+    "doctors": 33,
+    "branches": 2,
+    "receptionists": 2,
+    "technicians": 2,
+    "services": 65,
+    "branch_services": 130,
+    "schedule_start": "2026-11-11",
+    "schedule_end": "2026-12-10"
+  },
+  "changes": {
+    "clinical": {
+      "treatment_sessions": 1,
+      "treatment_plans": 2,
+      "encounters": 3,
+      "frontend_fixture_history_archived": 59
+    },
+    "laboratory": {
+      "lab_orders": 3,
+      "frontend_fixture_history_archived": 22
+    },
+    "billing": {
+      "legacy_lab_charges": 0,
+      "invoices": 4,
+      "frontend_fixture_history_archived": 15
+    },
+    "appointment": {
+      "patient_notifications": 4,
+      "appointment_checkins": 4,
+      "appointments": 9,
+      "frontend_fixture_history_archived": 46
+    },
+    "scheduling": {
+      "slot_holds": 4,
+      "slot_inventory": 3,
+      "doctor_schedules": 290,
+      "frontend_fixture_history_archived": 4
+    },
+    "identity": {
+      "refresh_tokens_revoked": 224,
+      "accounts": 33,
+      "passwords_reset": 56,
+      "frontend_fixture_history_archived": 0
+    },
+    "registry": {
+      "branch_services": 63,
+      "medical_services": 33,
+      "staff_profiles": 33,
+      "branches": 3,
+      "frontend_fixture_history_archived": 210
+    }
+  },
+  "verification": {
+    "passwords_verified": 56,
+    "all_staff_active": 37,
+    "retired_technician_results_preserved": 3,
+    "roles": {
+      "doctor": 33,
+      "xnv": 2,
+      "admin": 2,
+      "patient": 17,
+      "letan": 2
+    },
+    "row_counts": {
+      "identity": {
+        "accounts": 56,
+        "refresh_tokens": 0
+      },
+      "registry": {
+        "staff_profiles": 37,
+        "branches": 2,
+        "medical_services": 65,
+        "branch_services": 130,
+        "patients": 16
+      },
+      "scheduling": {
+        "doctor_schedules": 1728,
+        "slot_holds": 0,
+        "slot_inventory": 0
+      },
+      "appointment": {
+        "appointments": 49,
+        "appointment_checkins": 40,
+        "patient_notifications": 15,
+        "appointment_queue_counters": 22
+      },
+      "billing": {
+        "invoices": 49,
+        "legacy_lab_charges": 13
+      },
+      "clinical": {
+        "encounters": 20,
+        "treatment_plans": 8,
+        "treatment_sessions": 16
+      },
+      "laboratory": {
+        "lab_orders": 13
+      }
+    }
+  },
+  "status": "applied"
+}

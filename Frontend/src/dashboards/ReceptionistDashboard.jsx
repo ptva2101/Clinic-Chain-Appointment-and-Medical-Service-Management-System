@@ -34,40 +34,33 @@ export default function ReceptionistDashboard({ user, identityAccessToken, onLog
 
   const effectiveBranches = catalogData?.branches || []
   const effectiveServices = catalogData?.services || []
-  const catalogDoctors = Object.values(
-    (catalogData?.doctorSchedules || []).reduce((doctorMap, schedule) => {
-      if (!schedule.MaBacSi || doctorMap[schedule.MaBacSi]) return doctorMap
-
-      doctorMap[schedule.MaBacSi] = {
-        MaBacSi: schedule.MaBacSi,
-        HoTen: schedule.TenBacSi || schedule.HoTen || schedule.MaBacSi,
-        ChuyenKhoa: schedule.ChuyenKhoa || '',
-        SDT: schedule.SDT || '',
-      }
-      return doctorMap
-    }, {}),
-  )
+  const catalogDoctors = catalogData?.doctors || []
   const effectiveStaffList = catalogDoctors
 
   const maChiNhanh = user?.MaChiNhanh || effectiveBranches[0]?.MaChiNhanh || ''
-  const currentBranch = effectiveBranches.find((branch) => branch.MaChiNhanh === maChiNhanh) || effectiveBranches[0]
+  const currentBranch = effectiveBranches.find((branch) => branch.MaChiNhanh === maChiNhanh) || {
+    MaChiNhanh: maChiNhanh,
+    TenChiNhanh: maChiNhanh || 'Đang tải thông tin chi nhánh',
+  }
   const branchDoctorsToday = useMemo(() => {
+    const profiles = new Map((catalogData?.doctors || []).map((doctor) => [doctor.MaBacSi, doctor]))
     const doctorMap = (catalogData?.doctorSchedules || [])
-      .filter((schedule) => schedule.MaChiNhanh === maChiNhanh && schedule.NgayTruc === TODAY)
+      .filter((schedule) => schedule.MaChiNhanh === maChiNhanh && schedule.NgayTruc === TODAY
+        && (!schedule.TrangThai || schedule.TrangThai === 'Đang hoạt động'))
       .reduce((currentMap, schedule) => {
         if (!schedule.MaBacSi || currentMap[schedule.MaBacSi]) return currentMap
 
-        currentMap[schedule.MaBacSi] = {
+        currentMap[schedule.MaBacSi] = profiles.get(schedule.MaBacSi) || {
           MaBacSi: schedule.MaBacSi,
-          HoTen: schedule.TenBacSi || schedule.HoTen || schedule.MaBacSi,
-          ChuyenKhoa: schedule.ChuyenKhoa || '',
-          SDT: schedule.SDT || '',
+          HoTen: schedule.MaBacSi,
+          ChuyenKhoa: 'Chưa tải được chuyên khoa',
+          SDT: '',
         }
         return currentMap
       }, {})
 
     return Object.values(doctorMap)
-  }, [catalogData?.doctorSchedules, maChiNhanh, TODAY])
+  }, [catalogData?.doctorSchedules, catalogData?.doctors, maChiNhanh, TODAY])
 
   const normalizeReceptionBooking = useCallback((appointment) => ({
     MaLichHen: appointment.MaLichHen,

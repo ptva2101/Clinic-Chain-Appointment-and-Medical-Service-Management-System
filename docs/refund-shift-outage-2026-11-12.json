@@ -1,0 +1,10 @@
+{
+  "phase": "outage",
+  "results": [
+    {
+      "case": "Billing outage leaves reserved pending operation and no false success notification",
+      "status": "PASS",
+      "evidence": {}
+    }
+  ]
+}

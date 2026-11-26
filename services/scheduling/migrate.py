@@ -74,6 +74,16 @@ async def migrate() -> None:
                             "ALTER TABLE slot_holds ADD INDEX ix_hold_schedule_state "
                             "(doctor_code, branch_code, duty_date, shift, state, expires_at)"
                         )
+                    await cursor.execute(
+                        "SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS "
+                        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'slot_holds' "
+                        "AND INDEX_NAME = 'ix_hold_patient_slot' LIMIT 1"
+                    )
+                    if await cursor.fetchone() is None:
+                        await cursor.execute(
+                            "ALTER TABLE slot_holds ADD INDEX ix_hold_patient_slot "
+                            "(patient_id, duty_date, shift, state, expires_at)"
+                        )
                 await connection.commit()
             except Exception:
                 await connection.rollback()

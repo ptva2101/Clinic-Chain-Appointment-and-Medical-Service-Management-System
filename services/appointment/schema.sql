@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     status VARCHAR(24) NOT NULL DEFAULT 'pending',
     source VARCHAR(24) NOT NULL DEFAULT 'live',
     legacy_status VARCHAR(80) NULL,
+    change_operation_id CHAR(36) NULL,
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     UNIQUE KEY uq_appointment_hold (hold_id),
@@ -29,7 +30,7 @@ CREATE TABLE IF NOT EXISTS patient_notifications (
     appointment_id CHAR(36) NULL,
     patient_account_id CHAR(36) NOT NULL,
     patient_id VARCHAR(128) NOT NULL,
-    event VARCHAR(32) NOT NULL,
+    event VARCHAR(64) NOT NULL,
     content VARCHAR(500) NOT NULL,
     is_read BOOLEAN NOT NULL DEFAULT FALSE,
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -60,4 +61,14 @@ CREATE TABLE IF NOT EXISTS appointment_checkins (
     KEY ix_queue_doctor (doctor_code, duty_date, state, queue_number),
     CONSTRAINT fk_checkin_appointment FOREIGN KEY (appointment_id) REFERENCES appointments(id),
     CONSTRAINT ck_checkin_state CHECK (state IN ('waiting', 'examining', 'conclusion', 'completed'))
+);
+
+CREATE TABLE IF NOT EXISTS appointment_changes (
+    id CHAR(36) PRIMARY KEY,
+    payload JSON NOT NULL,
+    state VARCHAR(16) NOT NULL DEFAULT 'pending',
+    last_error VARCHAR(500) NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    KEY ix_change_pending (state, created_at)
 );
